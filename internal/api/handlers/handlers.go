@@ -24,7 +24,18 @@ func NewConfigHandler(store store.Store) *ConfigHandler {
 	}
 }
 
-// CreateSingBoxConfigHandler handles POST requests to create a new SingBox configuration
+// CreateSingBoxConfigHandler creates a new SingBox configuration.
+// @Summary      Create SingBox Config
+// @Description  Adds a new SingBox configuration to the store.
+// @Tags         ConfigsSingBox
+// @Accept       json
+// @Produce      json
+// @Param        singBoxConfig body models.SingBoxConfig true "SingBox Configuration Object"
+// @Success      201 {object} models.SingBoxConfig "Successfully created SingBox configuration"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid input or missing name"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to create configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/singbox [post]
 func (h *ConfigHandler) CreateSingBoxConfigHandler(c *gin.Context) {
 	var config models.SingBoxConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
@@ -45,7 +56,17 @@ func (h *ConfigHandler) CreateSingBoxConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, config)
 }
 
-// ListSingBoxConfigsHandler handles GET requests to list SingBox configurations
+// ListSingBoxConfigsHandler lists all SingBox configurations with pagination.
+// @Summary      List SingBox Configs
+// @Description  Retrieves a paginated list of SingBox configurations.
+// @Tags         ConfigsSingBox
+// @Produce      json
+// @Param        limit query int false "Number of items to return per page" default(10) example(10)
+// @Param        offset query int false "Offset for pagination" default(0) example(0)
+// @Success      200 {object} map[string][]models.SingBoxConfig "A list of SingBox configurations"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to list configurations"
+// @Security     ApiKeyAuth
+// @Router       /configs/singbox [get]
 func (h *ConfigHandler) ListSingBoxConfigsHandler(c *gin.Context) {
 	limit := 10
 	offset := 0
@@ -71,7 +92,18 @@ func (h *ConfigHandler) ListSingBoxConfigsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"configs": configs})
 }
 
-// GetSingBoxConfigHandler handles GET requests to retrieve a specific SingBox configuration
+// GetSingBoxConfigHandler retrieves a specific SingBox configuration by its ID.
+// @Summary      Get SingBox Config by ID
+// @Description  Fetches a single SingBox configuration based on its unique ID.
+// @Tags         ConfigsSingBox
+// @Produce      json
+// @Param        configId path string true "SingBox Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Success      200 {object} models.SingBoxConfig "Successfully retrieved SingBox configuration"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid or missing configuration ID"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to retrieve configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/singbox/{configId} [get]
 func (h *ConfigHandler) GetSingBoxConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -91,7 +123,20 @@ func (h *ConfigHandler) GetSingBoxConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, config)
 }
 
-// UpdateSingBoxConfigHandler handles PUT requests to update a SingBox configuration
+// UpdateSingBoxConfigHandler updates an existing SingBox configuration.
+// @Summary      Update SingBox Config
+// @Description  Modifies an existing SingBox configuration by its ID.
+// @Tags         ConfigsSingBox
+// @Accept       json
+// @Produce      json
+// @Param        configId path string true "SingBox Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Param        singBoxConfig body models.SingBoxConfig true "SingBox Configuration Object"
+// @Success      200 {object} models.SingBoxConfig "Successfully updated SingBox configuration"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid input, missing ID, or missing name"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found for update"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to update configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/singbox/{configId} [put]
 func (h *ConfigHandler) UpdateSingBoxConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -124,7 +169,18 @@ func (h *ConfigHandler) UpdateSingBoxConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, config)
 }
 
-// DeleteSingBoxConfigHandler handles DELETE requests to remove a SingBox configuration
+// DeleteSingBoxConfigHandler removes a SingBox configuration by its ID.
+// @Summary      Delete SingBox Config
+// @Description  Deletes a specific SingBox configuration by its ID.
+// @Tags         ConfigsSingBox
+// @Produce      json
+// @Param        configId path string true "SingBox Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Success      200 {object} map[string]string "Success message"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid or missing configuration ID"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found for deletion"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to delete configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/singbox/{configId} [delete]
 func (h *ConfigHandler) DeleteSingBoxConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -143,7 +199,18 @@ func (h *ConfigHandler) DeleteSingBoxConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "configuration deleted successfully"})
 }
 
-// GenerateSingBoxConfigHandler handles GET requests to generate a SingBox configuration file
+// GenerateSingBoxConfigHandler generates a sanitized SingBox configuration file by ID.
+// @Summary      Generate SingBox Config File
+// @Description  Retrieves a SingBox configuration and returns it in a format suitable for the sing-box binary, stripping internal metadata.
+// @Tags         ConfigsSingBox
+// @Produce      json
+// @Param        configId path string true "SingBox Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Success      200 {object} object "The core SingBox configuration JSON. The actual structure depends on the config (models.SingBoxConfig without metadata)."
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid or missing configuration ID"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to retrieve configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/singbox/{configId}/generate [get]
 func (h *ConfigHandler) GenerateSingBoxConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -179,7 +246,19 @@ func (h *ConfigHandler) GenerateSingBoxConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, singboxCoreConfig)
 }
 
-// CreateXrayConfigHandler handles POST requests to create a new Xray configuration
+// CreateXrayConfigHandler creates a new Xray configuration.
+// @Summary      Create Xray Config
+// @Description  Adds a new Xray configuration to the store. Name must be unique.
+// @Tags         ConfigsXray
+// @Accept       json
+// @Produce      json
+// @Param        xrayConfig body models.XrayConfig true "Xray Configuration Object"
+// @Success      201 {object} models.XrayConfig "Successfully created Xray configuration"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid input or missing name"
+// @Failure      409 {object} models.ErrorResponse "Conflict - Configuration name already exists"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to create configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/xray [post]
 func (h *ConfigHandler) CreateXrayConfigHandler(c *gin.Context) {
 	var config models.XrayConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
@@ -210,7 +289,17 @@ func (h *ConfigHandler) CreateXrayConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, config)
 }
 
-// ListXrayConfigsHandler handles GET requests to list Xray configurations
+// ListXrayConfigsHandler lists all Xray configurations with pagination.
+// @Summary      List Xray Configs
+// @Description  Retrieves a paginated list of Xray configurations.
+// @Tags         ConfigsXray
+// @Produce      json
+// @Param        limit query int false "Number of items to return per page" default(10) example(10)
+// @Param        offset query int false "Offset for pagination" default(0) example(0)
+// @Success      200 {object} map[string][]models.XrayConfig "A list of Xray configurations"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to list configurations"
+// @Security     ApiKeyAuth
+// @Router       /configs/xray [get]
 func (h *ConfigHandler) ListXrayConfigsHandler(c *gin.Context) {
 	limit := 10
 	offset := 0
@@ -236,7 +325,18 @@ func (h *ConfigHandler) ListXrayConfigsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"configs": configs})
 }
 
-// GetXrayConfigHandler handles GET requests to retrieve a specific Xray configuration
+// GetXrayConfigHandler retrieves a specific Xray configuration by its ID.
+// @Summary      Get Xray Config by ID
+// @Description  Fetches a single Xray configuration based on its unique ID.
+// @Tags         ConfigsXray
+// @Produce      json
+// @Param        configId path string true "Xray Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Success      200 {object} models.XrayConfig "Successfully retrieved Xray configuration"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid or missing configuration ID"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to retrieve configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/xray/{configId} [get]
 func (h *ConfigHandler) GetXrayConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -256,7 +356,21 @@ func (h *ConfigHandler) GetXrayConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, config)
 }
 
-// UpdateXrayConfigHandler handles PUT requests to update an Xray configuration
+// UpdateXrayConfigHandler updates an existing Xray configuration.
+// @Summary      Update Xray Config
+// @Description  Modifies an existing Xray configuration by its ID. Name must be unique among Xray configs.
+// @Tags         ConfigsXray
+// @Accept       json
+// @Produce      json
+// @Param        configId path string true "Xray Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Param        xrayConfig body models.XrayConfig true "Xray Configuration Object"
+// @Success      200 {object} models.XrayConfig "Successfully updated Xray configuration"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid input, missing ID, or missing name"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found for update"
+// @Failure      409 {object} models.ErrorResponse "Conflict - Configuration name already exists for another configuration"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to update configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/xray/{configId} [put]
 func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -292,7 +406,18 @@ func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, config)
 }
 
-// DeleteXrayConfigHandler handles DELETE requests to remove an Xray configuration
+// DeleteXrayConfigHandler removes an Xray configuration by its ID.
+// @Summary      Delete Xray Config
+// @Description  Deletes a specific Xray configuration by its ID.
+// @Tags         ConfigsXray
+// @Produce      json
+// @Param        configId path string true "Xray Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Success      200 {object} map[string]string "Success message"
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid or missing configuration ID"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found for deletion"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to delete configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/xray/{configId} [delete]
 func (h *ConfigHandler) DeleteXrayConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {
@@ -311,7 +436,18 @@ func (h *ConfigHandler) DeleteXrayConfigHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "configuration deleted successfully"})
 }
 
-// GenerateXrayConfigHandler handles GET requests to generate an Xray configuration file
+// GenerateXrayConfigHandler generates a sanitized Xray configuration file by ID.
+// @Summary      Generate Xray Config File
+// @Description  Retrieves an Xray configuration and returns it in a format suitable for the Xray-core binary, stripping internal metadata.
+// @Tags         ConfigsXray
+// @Produce      json
+// @Param        configId path string true "Xray Configuration ID" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+// @Success      200 {object} object "The core Xray configuration JSON. The actual structure depends on the config (models.XrayConfig without metadata)."
+// @Failure      400 {object} models.ErrorResponse "Bad Request - Invalid or missing configuration ID"
+// @Failure      404 {object} models.ErrorResponse "Not Found - Configuration not found"
+// @Failure      500 {object} models.ErrorResponse "Internal Server Error - Failed to retrieve configuration"
+// @Security     ApiKeyAuth
+// @Router       /configs/xray/{configId}/generate [get]
 func (h *ConfigHandler) GenerateXrayConfigHandler(c *gin.Context) {
 	configID, ok := validateConfigID(c)
 	if !ok {

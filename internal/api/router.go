@@ -4,13 +4,21 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/tools4net/ezfw/backend/internal/api/handlers"
 	"github.com/tools4net/ezfw/backend/internal/api/middleware" // Correct import
 	"github.com/tools4net/ezfw/backend/internal/store"
+	_ "github.com/tools4net/ezfw/backend/internal/api/docs" // Import generated docs
 )
 
 // SetupRouter initializes the Gin router and sets up API routes.
 func SetupRouter(router *gin.Engine, dbStore store.Store) {
+	// Swagger endpoint - should be defined before auth middleware if it's to be public
+	// Or define it on a separate group or make it exempt from auth.
+	// For now, let's put it at the top level of the passed-in router.
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
 	// Create handlers
 	configHandler := handlers.NewConfigHandler(dbStore)
 

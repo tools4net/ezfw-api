@@ -311,11 +311,11 @@ type SingBoxRouteConfig struct {
 
 // SingBoxConfig is the main configuration structure for SingBox, managed by ProxyPanel.
 type SingBoxConfig struct {
-	ID          string    `json:"id,omitempty" gorm:"primaryKey"`
-	Name        string    `json:"name,omitempty"`
-	Description string    `json:"description,omitempty"`
-	CreatedAt   time.Time `json:"createdAt,omitempty"`
-	UpdatedAt   time.Time `json:"updatedAt,omitempty"`
+	ID          string    `json:"id,omitempty" gorm:"primaryKey" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"`
+	Name        string    `json:"name,omitempty" example:"My SingBox Test"`
+	Description string    `json:"description,omitempty" example:"Experimental Sing-box setup"`
+	CreatedAt   time.Time `json:"createdAt,omitempty" example:"2023-01-02T10:00:00Z"`
+	UpdatedAt   time.Time `json:"updatedAt,omitempty" example:"2023-01-02T11:00:00Z"`
 
 	Log          *SingBoxLogConfig         `json:"log,omitempty"`
 	DNS          *SingBoxDNSConfig         `json:"dns,omitempty"`

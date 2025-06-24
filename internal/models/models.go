@@ -14,3 +14,8 @@ package models
 
 // SingBoxConfig related structs are in singbox.go
 // XrayConfig related structs are in xray.go
+
+// ErrorResponse represents a generic error response for API calls.
+type ErrorResponse struct {
+	Error string `json:"error" example:"Detailed error message"`
+}

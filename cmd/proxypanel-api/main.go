@@ -1,3 +1,23 @@
+// @title           EZFW API
+// @version         1.0
+// @description     This is the API for managing EZFW (Easy Firewall/Proxy) configurations for Xray and Sing-box.
+// @termsOfService  http://example.com/terms/
+
+// @contact.name   API Support
+// @contact.url    https://github.com/tools4net/ezfw/issues
+// @contact.email  support@example.com
+
+// @license.name  MIT
+// @license.url   https://opensource.org/licenses/MIT
+
+// @host            localhost:8080
+// @BasePath        /api/v1
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name X-API-Key
+// @description API Key for authentication. Prepend with "Bearer " if it's a bearer token, otherwise just the key. For this API, just the key is expected.
+
 package main
 
 import (

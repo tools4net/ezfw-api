@@ -5,11 +5,11 @@ import "time"
 // XrayConfig is the top-level structure for an Xray configuration.
 // It also includes metadata for storage and management within ProxyPanel.
 type XrayConfig struct {
-	ID          string    `json:"id" gorm:"primaryKey"` // Internal ID for database
-	Name        string    `json:"name" gorm:"uniqueIndex"` // User-defined name for the config
-	Description string    `json:"description,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string    `json:"id" gorm:"primaryKey" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"` // Internal ID for database
+	Name        string    `json:"name" gorm:"uniqueIndex" example:"My Default Xray Config"`            // User-defined name for the config
+	Description string    `json:"description,omitempty" example:"Main Xray server configuration"`
+	CreatedAt   time.Time `json:"created_at" example:"2023-01-01T12:00:00Z"`
+	UpdatedAt   time.Time `json:"updated_at" example:"2023-01-01T13:00:00Z"`
 
 	// Core Xray configuration fields
 	Log              *LogObject              `json:"log,omitempty"`
