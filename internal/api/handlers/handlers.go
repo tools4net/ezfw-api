@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -27,6 +29,11 @@ func (h *ConfigHandler) CreateSingBoxConfigHandler(c *gin.Context) {
 	var config models.SingBoxConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate that the configuration name is not empty
+	if !validateConfigName(c, config.Name, "SingBox Configuration") {
 		return
 	}
 
@@ -66,15 +73,18 @@ func (h *ConfigHandler) ListSingBoxConfigsHandler(c *gin.Context) {
 
 // GetSingBoxConfigHandler handles GET requests to retrieve a specific SingBox configuration
 func (h *ConfigHandler) GetSingBoxConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
 	config, err := h.store.GetSingBoxConfig(c.Request.Context(), configID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve configuration: " + err.Error()})
+		}
 		return
 	}
 
@@ -83,9 +93,8 @@ func (h *ConfigHandler) GetSingBoxConfigHandler(c *gin.Context) {
 
 // UpdateSingBoxConfigHandler handles PUT requests to update a SingBox configuration
 func (h *ConfigHandler) UpdateSingBoxConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
@@ -98,8 +107,17 @@ func (h *ConfigHandler) UpdateSingBoxConfigHandler(c *gin.Context) {
 	// Ensure the ID matches the URL parameter
 	config.ID = configID
 
+	// Validate that the configuration name is not empty if provided
+	if !validateConfigName(c, config.Name, "SingBox Configuration") {
+		return
+	}
+
 	if err := h.store.UpdateSingBoxConfig(c.Request.Context(), &config); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found for update"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update configuration: " + err.Error()})
+		}
 		return
 	}
 
@@ -108,14 +126,17 @@ func (h *ConfigHandler) UpdateSingBoxConfigHandler(c *gin.Context) {
 
 // DeleteSingBoxConfigHandler handles DELETE requests to remove a SingBox configuration
 func (h *ConfigHandler) DeleteSingBoxConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
 	if err := h.store.DeleteSingBoxConfig(c.Request.Context(), configID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found for deletion"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete configuration: " + err.Error()})
+		}
 		return
 	}
 
@@ -124,22 +145,38 @@ func (h *ConfigHandler) DeleteSingBoxConfigHandler(c *gin.Context) {
 
 // GenerateSingBoxConfigHandler handles GET requests to generate a SingBox configuration file
 func (h *ConfigHandler) GenerateSingBoxConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
 	config, err := h.store.GetSingBoxConfig(c.Request.Context(), configID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve configuration: " + err.Error()})
+		}
 		return
 	}
 
-	// Return the configuration in a format suitable for SingBox
+	// Return the configuration in a format suitable for SingBox, stripping internal metadata
+	singboxCoreConfig := gin.H{
+		"log":          config.Log,
+		"dns":          config.DNS,
+		"ntp":          config.NTP,
+		"inbounds":     config.Inbounds,
+		"outbounds":    config.Outbounds,
+		"route":        config.Route,
+		"experimental": config.Experimental,
+		"services":     config.Services,
+		"endpoints":    config.Endpoints,
+		"certificate":  config.Certificate,
+	}
+
 	c.Header("Content-Type", "application/json")
-	c.Header("Content-Disposition", "attachment; filename=singbox-config.json")
-	c.JSON(http.StatusOK, config)
+	c.Header("Content-Disposition", "attachment; filename=singbox-config-"+config.Name+".json")
+	c.JSON(http.StatusOK, singboxCoreConfig)
 }
 
 // CreateXrayConfigHandler handles POST requests to create a new Xray configuration
@@ -150,9 +187,8 @@ func (h *ConfigHandler) CreateXrayConfigHandler(c *gin.Context) {
 		return
 	}
 
-	// Basic validation: Name is required
-	if config.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Configuration 'name' is required"})
+	// Basic validation: Name is required and cannot be empty
+	if !validateConfigName(c, config.Name, "Xray Configuration") {
 		return
 	}
 
@@ -202,15 +238,18 @@ func (h *ConfigHandler) ListXrayConfigsHandler(c *gin.Context) {
 
 // GetXrayConfigHandler handles GET requests to retrieve a specific Xray configuration
 func (h *ConfigHandler) GetXrayConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
 	config, err := h.store.GetXrayConfig(c.Request.Context(), configID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve configuration: " + err.Error()})
+		}
 		return
 	}
 
@@ -219,9 +258,8 @@ func (h *ConfigHandler) GetXrayConfigHandler(c *gin.Context) {
 
 // UpdateXrayConfigHandler handles PUT requests to update an Xray configuration
 func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
@@ -231,19 +269,8 @@ func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
 		return
 	}
 
-	// Basic validation: Name is required if being updated to a new value
-	// If the name field is present in the payload and is empty, it's an error.
-	// If the name field is not in the payload, it means the name is not being updated.
-	if name, ok := c.Get("name"); ok && name.(string) == "" {
-		// This check is a bit tricky with ShouldBindJSON as it depends on how partial updates are handled.
-		// A simpler check is just on config.Name if it's expected to be part of the payload.
-		// For a PUT, typically the full new state is expected.
-		// If partial update (PATCH) was supported, this would be different.
-	}
-	// For PUT, usually, all fields that define the resource's identity or are required should be present.
-	// Let's assume Name is required in the payload for an update.
-	if config.Name == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Configuration 'name' cannot be empty for update"})
+	// Name is required in the payload for an update and cannot be empty.
+	if !validateConfigName(c, config.Name, "Xray Configuration") {
 		return
 	}
 
@@ -252,12 +279,13 @@ func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
 	config.ID = configID
 
 	if err := h.store.UpdateXrayConfig(c.Request.Context(), &config); err != nil {
-		// Check for unique constraint error on name
-		if strings.Contains(err.Error(), "UNIQUE constraint failed: xray_configs.name") {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found for update"})
+		} else if strings.Contains(err.Error(), "UNIQUE constraint failed: xray_configs.name") { // Check for unique constraint error on name
 			c.JSON(http.StatusConflict, gin.H{"error": "Configuration name already exists for another configuration"})
-			return
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update Xray configuration: " + err.Error()})
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update Xray configuration: " + err.Error()})
 		return
 	}
 
@@ -266,14 +294,17 @@ func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
 
 // DeleteXrayConfigHandler handles DELETE requests to remove an Xray configuration
 func (h *ConfigHandler) DeleteXrayConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
 	if err := h.store.DeleteXrayConfig(c.Request.Context(), configID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found for deletion"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete Xray configuration: " + err.Error()})
+		}
 		return
 	}
 
@@ -282,15 +313,18 @@ func (h *ConfigHandler) DeleteXrayConfigHandler(c *gin.Context) {
 
 // GenerateXrayConfigHandler handles GET requests to generate an Xray configuration file
 func (h *ConfigHandler) GenerateXrayConfigHandler(c *gin.Context) {
-	configID := c.Param("configId")
-	if configID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "config ID is required"})
+	configID, ok := validateConfigID(c)
+	if !ok {
 		return
 	}
 
 	config, err := h.store.GetXrayConfig(c.Request.Context(), configID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "configuration not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve configuration: " + err.Error()})
+		}
 		return
 	}
 
@@ -316,4 +350,29 @@ func (h *ConfigHandler) GenerateXrayConfigHandler(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 	c.Header("Content-Disposition", "attachment; filename=xray-config-"+config.Name+".json") // Add config name to filename
 	c.JSON(http.StatusOK, xrayCoreConfig)
+}
+
+// --- Helper Functions ---
+
+// validateConfigID checks if the configId path parameter is present.
+// If not, it writes a 400 error to the context and returns (id="", ok=false).
+// Otherwise, it returns (id=configID, ok=true).
+func validateConfigID(c *gin.Context) (string, bool) {
+	configID := c.Param("configId")
+	if configID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Config ID is required in path"})
+		return "", false
+	}
+	return configID, true
+}
+
+// validateConfigName checks if the Name field of a model is empty (after trimming spaces).
+// If empty, it writes a 400 error to the context and returns false.
+// entityType is a string like "SingBox Configuration" or "Xray Configuration" for the error message.
+func validateConfigName(c *gin.Context, name string, entityType string) bool {
+	if strings.TrimSpace(name) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": entityType + " 'name' is required and cannot be empty"})
+		return false
+	}
+	return true
 }
