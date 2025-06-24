@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tools4net/ezfw/backend/internal/models"
@@ -162,7 +163,7 @@ func (h *ConfigHandler) CreateXrayConfigHandler(c *gin.Context) {
 
 	if err := h.store.CreateXrayConfig(c.Request.Context(), &config); err != nil {
 		// Check for unique constraint error on name (specific to SQLite error message)
-		if err.Error().Contains("UNIQUE constraint failed: xray_configs.name") {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: xray_configs.name") {
 			c.JSON(http.StatusConflict, gin.H{"error": "Configuration name already exists"})
 			return
 		}
@@ -252,7 +253,7 @@ func (h *ConfigHandler) UpdateXrayConfigHandler(c *gin.Context) {
 
 	if err := h.store.UpdateXrayConfig(c.Request.Context(), &config); err != nil {
 		// Check for unique constraint error on name
-		if err.Error().Contains("UNIQUE constraint failed: xray_configs.name") {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed: xray_configs.name") {
 			c.JSON(http.StatusConflict, gin.H{"error": "Configuration name already exists for another configuration"})
 			return
 		}

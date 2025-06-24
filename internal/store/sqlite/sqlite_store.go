@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 	"github.com/tools4net/ezfw/backend/internal/models"
-	"time"
 )
 
 // SQLiteStore implements the store.Store interface using SQLite.
@@ -289,7 +290,8 @@ func (s *SQLiteStore) CreateSingBoxConfig(ctx context.Context, config *models.Si
         experimental_config, services_config, endpoints_config, certificate_config
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	_, err = s.db.ExecContext(ctx, stmt,
+	_, err = s.db.ExecContext(
+		ctx, stmt,
 		config.ID, config.Name, config.Description, config.CreatedAt, config.UpdatedAt,
 		logJSON, dnsJSON, ntpJSON, inboundsJSON, outboundsJSON, routeJSON,
 		experimentalJSON, servicesJSON, endpointsJSON, certificateJSON,
@@ -562,7 +564,8 @@ func (s *SQLiteStore) UpdateSingBoxConfig(ctx context.Context, config *models.Si
         experimental_config = ?, services_config = ?, endpoints_config = ?, certificate_config = ?
     WHERE id = ?`
 
-	result, err := s.db.ExecContext(ctx, stmt,
+	result, err := s.db.ExecContext(
+		ctx, stmt,
 		config.Name, config.Description, config.UpdatedAt,
 		logJSON, dnsJSON, ntpJSON, inboundsJSON, outboundsJSON, routeJSON,
 		experimentalJSON, servicesJSON, endpointsJSON, certificateJSON,
@@ -612,33 +615,61 @@ func (s *SQLiteStore) CreateXrayConfig(ctx context.Context, config *models.XrayC
 
 	var err error
 	logJSON, err := marshalToJSON(config.Log)
-	if err != nil { return fmt.Errorf("marshal Log: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Log: %w", err)
+	}
 	apiJSON, err := marshalToJSON(config.API)
-	if err != nil { return fmt.Errorf("marshal API: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal API: %w", err)
+	}
 	dnsJSON, err := marshalToJSON(config.DNS)
-	if err != nil { return fmt.Errorf("marshal DNS: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal DNS: %w", err)
+	}
 	routingJSON, err := marshalToJSON(config.Routing)
-	if err != nil { return fmt.Errorf("marshal Routing: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Routing: %w", err)
+	}
 	policyJSON, err := marshalToJSON(config.Policy)
-	if err != nil { return fmt.Errorf("marshal Policy: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Policy: %w", err)
+	}
 	inboundsJSON, err := marshalToJSON(config.Inbounds)
-	if err != nil { return fmt.Errorf("marshal Inbounds: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Inbounds: %w", err)
+	}
 	outboundsJSON, err := marshalToJSON(config.Outbounds)
-	if err != nil { return fmt.Errorf("marshal Outbounds: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Outbounds: %w", err)
+	}
 	transportJSON, err := marshalToJSON(config.Transport)
-	if err != nil { return fmt.Errorf("marshal Transport: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Transport: %w", err)
+	}
 	statsJSON, err := marshalToJSON(config.Stats)
-	if err != nil { return fmt.Errorf("marshal Stats: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Stats: %w", err)
+	}
 	reverseJSON, err := marshalToJSON(config.Reverse)
-	if err != nil { return fmt.Errorf("marshal Reverse: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Reverse: %w", err)
+	}
 	fakednsJSON, err := marshalToJSON(config.FakeDNS)
-	if err != nil { return fmt.Errorf("marshal FakeDNS: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal FakeDNS: %w", err)
+	}
 	metricsJSON, err := marshalToJSON(config.Metrics)
-	if err != nil { return fmt.Errorf("marshal Metrics: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Metrics: %w", err)
+	}
 	observatoryJSON, err := marshalToJSON(config.Observatory)
-	if err != nil { return fmt.Errorf("marshal Observatory: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Observatory: %w", err)
+	}
 	burstObservatoryJSON, err := marshalToJSON(config.BurstObservatory)
-	if err != nil { return fmt.Errorf("marshal BurstObservatory: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal BurstObservatory: %w", err)
+	}
 
 	stmt := `
     INSERT INTO xray_configs (
@@ -648,7 +679,8 @@ func (s *SQLiteStore) CreateXrayConfig(ctx context.Context, config *models.XrayC
         fakedns_config, metrics_config, observatory_config, burst_observatory_config
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	_, err := s.db.ExecContext(ctx, stmt,
+	_, err = s.db.ExecContext(
+		ctx, stmt,
 		config.ID, config.Name, config.Description, config.CreatedAt, config.UpdatedAt,
 		logJSON, apiJSON, dnsJSON, routingJSON, policyJSON,
 		inboundsJSON, outboundsJSON, transportJSON, statsJSON, reverseJSON,
@@ -826,33 +858,61 @@ func (s *SQLiteStore) UpdateXrayConfig(ctx context.Context, config *models.XrayC
 
 	var err error
 	logJSON, err := marshalToJSON(config.Log)
-	if err != nil { return fmt.Errorf("marshal Log: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Log: %w", err)
+	}
 	apiJSON, err := marshalToJSON(config.API)
-	if err != nil { return fmt.Errorf("marshal API: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal API: %w", err)
+	}
 	dnsJSON, err := marshalToJSON(config.DNS)
-	if err != nil { return fmt.Errorf("marshal DNS: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal DNS: %w", err)
+	}
 	routingJSON, err := marshalToJSON(config.Routing)
-	if err != nil { return fmt.Errorf("marshal Routing: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Routing: %w", err)
+	}
 	policyJSON, err := marshalToJSON(config.Policy)
-	if err != nil { return fmt.Errorf("marshal Policy: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Policy: %w", err)
+	}
 	inboundsJSON, err := marshalToJSON(config.Inbounds)
-	if err != nil { return fmt.Errorf("marshal Inbounds: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Inbounds: %w", err)
+	}
 	outboundsJSON, err := marshalToJSON(config.Outbounds)
-	if err != nil { return fmt.Errorf("marshal Outbounds: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Outbounds: %w", err)
+	}
 	transportJSON, err := marshalToJSON(config.Transport)
-	if err != nil { return fmt.Errorf("marshal Transport: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Transport: %w", err)
+	}
 	statsJSON, err := marshalToJSON(config.Stats)
-	if err != nil { return fmt.Errorf("marshal Stats: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Stats: %w", err)
+	}
 	reverseJSON, err := marshalToJSON(config.Reverse)
-	if err != nil { return fmt.Errorf("marshal Reverse: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Reverse: %w", err)
+	}
 	fakednsJSON, err := marshalToJSON(config.FakeDNS)
-	if err != nil { return fmt.Errorf("marshal FakeDNS: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal FakeDNS: %w", err)
+	}
 	metricsJSON, err := marshalToJSON(config.Metrics)
-	if err != nil { return fmt.Errorf("marshal Metrics: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Metrics: %w", err)
+	}
 	observatoryJSON, err := marshalToJSON(config.Observatory)
-	if err != nil { return fmt.Errorf("marshal Observatory: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal Observatory: %w", err)
+	}
 	burstObservatoryJSON, err := marshalToJSON(config.BurstObservatory)
-	if err != nil { return fmt.Errorf("marshal BurstObservatory: %w", err) }
+	if err != nil {
+		return fmt.Errorf("marshal BurstObservatory: %w", err)
+	}
 
 	stmt := `
     UPDATE xray_configs SET
@@ -862,7 +922,8 @@ func (s *SQLiteStore) UpdateXrayConfig(ctx context.Context, config *models.XrayC
         fakedns_config = ?, metrics_config = ?, observatory_config = ?, burst_observatory_config = ?
     WHERE id = ?`
 
-	result, err := s.db.ExecContext(ctx, stmt,
+	result, err := s.db.ExecContext(
+		ctx, stmt,
 		config.Name, config.Description, config.UpdatedAt,
 		logJSON, apiJSON, dnsJSON, routingJSON, policyJSON,
 		inboundsJSON, outboundsJSON, transportJSON, statsJSON, reverseJSON,
