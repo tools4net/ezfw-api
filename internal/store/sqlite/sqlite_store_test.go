@@ -300,10 +300,10 @@ func TestCreateXrayConfig(t *testing.T) {
 	config := &models.XrayConfig{
 		Name:        "Test Xray Config",
 		Description: "An Xray test configuration",
-		Log:         &models.XrayLogConfig{Loglevel: ("warning")},
-		DNS:         &models.XrayDNSConfig{QueryStrategy: ("UseIPv4")},
-		Inbounds: []*models.XrayInbound{
-			{Protocol: "socks", Port: (1088), Tag: ("socks-xray-in")},
+		Log:         &models.LogObject{Loglevel: "warning"},
+		DNS:         &models.DNSObject{ClientIP: "1.2.3.4"}, // Using a different field for variety
+		Inbounds: []models.InboundObject{ // Note: Inbounds is []InboundObject, not []*InboundObject in the model
+			{Protocol: "socks", Port: 1088, Tag: "socks-xray-in"},
 		},
 	}
 
@@ -316,23 +316,32 @@ func TestCreateXrayConfig(t *testing.T) {
 	require.NotNil(t, retrieved)
 	assert.Equal(t, config.Name, retrieved.Name)
 	require.NotNil(t, retrieved.Log)
-	assert.Equal(t, "warning", *retrieved.Log.Loglevel)
+	assert.Equal(t, "warning", retrieved.Log.Loglevel) // No pointer for Loglevel in new LogObject
 	require.NotNil(t, retrieved.DNS)
-	assert.Equal(t, "UseIPv4", *retrieved.DNS.QueryStrategy)
+	assert.Equal(t, "1.2.3.4", retrieved.DNS.ClientIP) // No pointer for ClientIP
 	require.Len(t, retrieved.Inbounds, 1)
 	assert.Equal(t, "socks", retrieved.Inbounds[0].Protocol)
 
 	// Handle Port being interface{}
-	portVal, ok := retrieved.Inbounds[0].Port.(int64) // SQLite might return int64 for numbers
-	if !ok {
-		portFloat, okFloat := retrieved.Inbounds[0].Port.(float64)
-		if okFloat {
-			portVal = int64(portFloat)
-		} else {
-			t.Fatalf("Port is not a number: %T", retrieved.Inbounds[0].Port)
-		}
-	}
-	assert.Equal(t, int64(1088), portVal)
+	// When unmarshalling from JSON, numbers are typically float64 unless specified otherwise
+	portVal, ok := retrieved.Inbounds[0].Port.(float64)
+	require.True(t, ok, "Port should be unmarshalled as float64 from JSON number")
+	assert.Equal(t, float64(1088), portVal)
+}
+
+func TestCreateXrayConfig_NameConflict(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	config1 := &models.XrayConfig{Name: "Conflict Xray"}
+	err := store.CreateXrayConfig(ctx, config1)
+	require.NoError(t, err)
+
+	config2 := &models.XrayConfig{Name: "Conflict Xray"}
+	err = store.CreateXrayConfig(ctx, config2)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "UNIQUE constraint failed: xray_configs.name")
 }
 
 func TestGetXrayConfig_NotFound(t *testing.T) {
@@ -349,25 +358,71 @@ func TestUpdateXrayConfig(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	original := &models.XrayConfig{Name: "Xray Original"}
+	original := &models.XrayConfig{Name: "Xray Original", Description: "Original Desc"}
 	err := store.CreateXrayConfig(ctx, original)
 	require.NoError(t, err)
+	require.NotEmpty(t, original.ID)
 
-	original.Name = "Xray Updated"
-	original.API = &models.XrayAPIConfig{Tag: ("api-tag")}
-	originalUpdatedAt := original.UpdatedAt
-	time.Sleep(10 * time.Millisecond)
+	toUpdate := &models.XrayConfig{
+		ID:          original.ID, // Must provide ID for update
+		Name:        "Xray Updated",
+		Description: "Updated Desc",
+		API:         &models.APIObject{Tag: "api-tag"},
+		// CreatedAt will be ignored, UpdatedAt will be set by the store
+	}
+	originalUpdatedAt := original.UpdatedAt // Store this before it's potentially modified by GetXrayConfig
 
-	err = store.UpdateXrayConfig(ctx, original)
+	// Retrieve and store UpdatedAt from DB to ensure accurate comparison
+	// because CreateXrayConfig sets it, and we need the DB version.
+	createdConfig, err := store.GetXrayConfig(ctx, original.ID)
+	require.NoError(t, err)
+	originalUpdatedAtFromDB := createdConfig.UpdatedAt
+
+	time.Sleep(10 * time.Millisecond) // Ensure UpdatedAt will change
+
+	err = store.UpdateXrayConfig(ctx, toUpdate)
 	require.NoError(t, err)
 
 	updated, err := store.GetXrayConfig(ctx, original.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Xray Updated", updated.Name)
+	assert.Equal(t, "Updated Desc", updated.Description)
 	require.NotNil(t, updated.API)
-	assert.Equal(t, "api-tag", *updated.API.Tag)
-	assert.True(t, updated.UpdatedAt.After(originalUpdatedAt))
+	assert.Equal(t, "api-tag", updated.API.Tag) // No pointer for Tag in new APIObject
+	assert.True(t, updated.UpdatedAt.After(originalUpdatedAtFromDB), "UpdatedAt should be more recent")
 }
+
+func TestUpdateXrayConfig_NotFound(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	nonExistentConfig := &models.XrayConfig{ID: uuid.NewString(), Name: "Non Existent"}
+	err := store.UpdateXrayConfig(ctx, nonExistentConfig)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found for update")
+}
+
+func TestUpdateXrayConfig_NameConflict(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	config1 := &models.XrayConfig{Name: "Xray Config One"}
+	err := store.CreateXrayConfig(ctx, config1)
+	require.NoError(t, err)
+
+	config2 := &models.XrayConfig{Name: "Xray Config Two"}
+	err = store.CreateXrayConfig(ctx, config2)
+	require.NoError(t, err)
+
+	// Try to update config2 to have config1's name
+	config2.Name = "Xray Config One"
+	err = store.UpdateXrayConfig(ctx, config2)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "UNIQUE constraint failed: xray_configs.name")
+}
+
 
 func TestDeleteXrayConfig(t *testing.T) {
 	store, cleanup := setupTestDB(t)
@@ -391,9 +446,9 @@ func TestListXrayConfigs(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	x1 := &models.XrayConfig{Name: "Xray Cfg 1", Log: &models.XrayLogConfig{Loglevel: ("info")}}
+	x1 := &models.XrayConfig{Name: "Xray Cfg 1", Log: &models.LogObject{Loglevel: "info"}}
 	time.Sleep(5 * time.Millisecond)
-	x2 := &models.XrayConfig{Name: "Xray Cfg 2", Log: &models.XrayLogConfig{Loglevel: ("debug")}}
+	x2 := &models.XrayConfig{Name: "Xray Cfg 2", Log: &models.LogObject{Loglevel: "debug"}}
 
 	require.NoError(t, store.CreateXrayConfig(ctx, x1))
 	require.NoError(t, store.CreateXrayConfig(ctx, x2))
@@ -404,7 +459,15 @@ func TestListXrayConfigs(t *testing.T) {
 	assert.Equal(t, x2.ID, configs[0].ID) // Ordered by UpdatedAt DESC
 	assert.Equal(t, x1.ID, configs[1].ID)
 	require.NotNil(t, configs[0].Log)
-	assert.Equal(t, "debug", *configs[0].Log.Loglevel)
+	assert.Equal(t, "debug", configs[0].Log.Loglevel)
+
+	// Test empty list
+	storeNoConf, cleanupNoConf := setupTestDB(t)
+	defer cleanupNoConf()
+	emptyConfigs, err := storeNoConf.ListXrayConfigs(ctx, 10, 0)
+	require.NoError(t, err)
+	assert.Len(t, emptyConfigs, 0)
+
 }
 
 func TestXrayConfig_JSONMarshalling_Partial(t *testing.T) {
@@ -413,13 +476,22 @@ func TestXrayConfig_JSONMarshalling_Partial(t *testing.T) {
 	ctx := context.Background()
 
 	partialXrayConfig := &models.XrayConfig{
-		Name:      "Partial Xray JSON Test",
-		Log:       &models.XrayLogConfig{Loglevel: ("error")},
-		API:       &models.XrayAPIConfig{Tag: ("proxy-api")},
-		Inbounds:  []*models.XrayInbound{{Protocol: "vless", Port: "443", Tag: ("vless-in")}}, // Port as string
-		Outbounds: []*models.XrayOutbound{{Protocol: "freedom", Tag: ("direct")}},
-		Stats:     &models.XrayStatsConfig{},
-		FakeDNS:   &models.XrayFakeDNSConfig{IPPool: ("198.18.0.0/15")},
+		Name: "Partial Xray JSON Test",
+		Log:  &models.LogObject{Loglevel: "error", Access: "/var/log/xray/access.log"},
+		API:  &models.APIObject{Tag: "proxy-api", Services: []string{"StatsService"}},
+		Inbounds: []models.InboundObject{ // Value type for slice elements
+			{
+				Protocol: "vless",
+				Port:     "443", // Port as string
+				Tag:      "vless-in",
+				Settings: map[string]interface{}{"decryption": "none"},
+			},
+		},
+		Outbounds: []models.OutboundObject{ // Value type for slice elements
+			{Protocol: "freedom", Tag: "direct", Settings: map[string]interface{}{"domainStrategy": "UseIP"}},
+		},
+		Stats:   &models.StatsObject{}, // Empty struct to enable stats
+		FakeDNS: &models.FakeDNSObject{IPPool: "198.18.0.0/15"},
 	}
 
 	err := store.CreateXrayConfig(ctx, partialXrayConfig)
@@ -433,22 +505,32 @@ func TestXrayConfig_JSONMarshalling_Partial(t *testing.T) {
 	assert.Equal(t, partialXrayConfig.Name, retrieved.Name)
 
 	require.NotNil(t, retrieved.Log)
-	assert.Equal(t, *partialXrayConfig.Log.Loglevel, *retrieved.Log.Loglevel)
+	assert.Equal(t, partialXrayConfig.Log.Loglevel, retrieved.Log.Loglevel)
+	assert.Equal(t, partialXrayConfig.Log.Access, retrieved.Log.Access)
+
 
 	require.NotNil(t, retrieved.API)
-	assert.Equal(t, *partialXrayConfig.API.Tag, *retrieved.API.Tag)
+	assert.Equal(t, partialXrayConfig.API.Tag, retrieved.API.Tag)
+	assert.Equal(t, partialXrayConfig.API.Services, retrieved.API.Services)
+
 
 	require.Len(t, retrieved.Inbounds, 1)
 	assert.Equal(t, "vless", retrieved.Inbounds[0].Protocol)
-	assert.Equal(t, "443", retrieved.Inbounds[0].Port.(string)) // Port is string
+	assert.Equal(t, "443", retrieved.Inbounds[0].Port) // Port is string, direct comparison
+	require.NotNil(t, retrieved.Inbounds[0].Settings)
+	assert.Equal(t, "none", retrieved.Inbounds[0].Settings["decryption"])
+
 
 	require.Len(t, retrieved.Outbounds, 1)
 	assert.Equal(t, "freedom", retrieved.Outbounds[0].Protocol)
+	require.NotNil(t, retrieved.Outbounds[0].Settings)
+	assert.Equal(t, "UseIP", retrieved.Outbounds[0].Settings["domainStrategy"])
 
-	require.NotNil(t, retrieved.Stats)
+
+	require.NotNil(t, retrieved.Stats) // Just checking it's not nil, as it's an empty struct
 
 	require.NotNil(t, retrieved.FakeDNS)
-	assert.Equal(t, *partialXrayConfig.FakeDNS.IPPool, *retrieved.FakeDNS.IPPool)
+	assert.Equal(t, partialXrayConfig.FakeDNS.IPPool, retrieved.FakeDNS.IPPool)
 
 	// Check that fields not set are nil or empty
 	assert.Nil(t, retrieved.DNS)
@@ -460,6 +542,35 @@ func TestXrayConfig_JSONMarshalling_Partial(t *testing.T) {
 	assert.Nil(t, retrieved.Observatory)
 	assert.Nil(t, retrieved.BurstObservatory)
 }
+
+func TestGetXrayConfigByName(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	config := &models.XrayConfig{
+		Name: "Xray Find By Name",
+		Log:  &models.LogObject{Loglevel: "debug"},
+	}
+	err := store.CreateXrayConfig(ctx, config)
+	require.NoError(t, err)
+	require.NotEmpty(t, config.ID)
+
+	// Test found
+	retrieved, err := store.GetXrayConfigByName(ctx, "Xray Find By Name")
+	require.NoError(t, err)
+	require.NotNil(t, retrieved)
+	assert.Equal(t, config.ID, retrieved.ID)
+	assert.Equal(t, "Xray Find By Name", retrieved.Name)
+	require.NotNil(t, retrieved.Log)
+	assert.Equal(t, "debug", retrieved.Log.Loglevel)
+
+	// Test not found
+	_, err = store.GetXrayConfigByName(ctx, "NonExistentName")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "not found"))
+}
+
 
 // It's good practice to also add pointer helpers to the models package itself if possible,
 // or a shared utility package.

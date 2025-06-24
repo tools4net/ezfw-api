@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tools4net/ezfw/backend/internal/api/handlers"
+	"github.com/tools4net/ezfw/backend/internal/api/middleware" // Correct import
 	"github.com/tools4net/ezfw/backend/internal/store"
 )
 
@@ -15,6 +16,13 @@ func SetupRouter(router *gin.Engine, dbStore store.Store) {
 
 	// Group API routes under /api/v1
 	v1 := router.Group("/api/v1")
+
+	// Apply API Key Auth middleware to the v1 group
+	// Note: This means /api/v1/health will also require auth.
+	// If health check should be public, it needs to be outside this group or have specific middleware.
+	v1.Use(middleware.APIKeyAuthMiddleware()) // Correct usage
+
+
 	{
 		// Health check for API v1
 		v1.GET("/health", func(c *gin.Context) {
