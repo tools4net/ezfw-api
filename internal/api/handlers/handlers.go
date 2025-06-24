@@ -345,6 +345,7 @@ func (h *ConfigHandler) GenerateXrayConfigHandler(c *gin.Context) {
 		"metrics":           config.Metrics,
 		"observatory":       config.Observatory,
 		"burstObservatory": config.BurstObservatory,
+		"services":          config.Services, // Added missing services field
 	}
 
 	c.Header("Content-Type", "application/json")
