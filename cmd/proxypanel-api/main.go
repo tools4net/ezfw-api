@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/tools4net/ezfw/backend/internal/api"
-	"github.com/tools4net/ezfw/backend/internal/store/sqlite"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/gin-gonic/gin"
+	"github.com/tools4net/ezfw/backend/internal/api"
+	"github.com/tools4net/ezfw/backend/internal/store/sqlite"
 	// "github.com/tools4net/ezfw/backend/internal/config" // Placeholder for config
 )
 
@@ -47,11 +48,15 @@ func main() {
 	api.SetupRouter(router, dbStore)
 
 	// Basic root health check (distinct from API health check)
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "ProxyPanel Backend is running!",
-		})
-	})
+	router.GET(
+		"/", func(c *gin.Context) {
+			c.JSON(
+				http.StatusOK, gin.H{
+					"message": "ProxyPanel Backend is running!",
+				},
+			)
+		},
+	)
 
 	port := os.Getenv("BACKEND_PORT")
 	if port == "" {
