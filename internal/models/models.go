@@ -1,5 +1,7 @@
 package models
 
+import "fmt"
+
 // This file can be used for models that are shared across different proxy types
 // or for general API request/response models not specific to a configuration.
 
@@ -19,3 +21,10 @@ package models
 type ErrorResponse struct {
 	Error string `json:"error" example:"Detailed error message"`
 }
+
+// Common errors for V2 models
+var (
+	ErrInvalidServiceType = fmt.Errorf("invalid service type")
+	ErrNodeNotFound       = fmt.Errorf("node not found")
+	ErrServiceNotFound    = fmt.Errorf("service instance not found")
+)

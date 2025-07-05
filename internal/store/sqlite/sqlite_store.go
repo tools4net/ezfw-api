@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,6 +88,84 @@ func (s *SQLiteStore) initSchema() error {
 	if _, err := s.db.Exec(createXrayTableSQL); err != nil {
 		return fmt.Errorf("failed to create xray_configs table: %w", err)
 	}
+
+	// V2 Tables
+	createNodesTableSQL := `
+	CREATE TABLE IF NOT EXISTS nodes (
+		id TEXT PRIMARY KEY,
+		name TEXT UNIQUE NOT NULL,
+		description TEXT,
+		hostname TEXT NOT NULL,
+		ip_address TEXT NOT NULL,
+		port INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'inactive',
+		os_info TEXT,
+		agent_info TEXT,
+		tags TEXT,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		last_seen DATETIME
+	);`
+	if _, err := s.db.Exec(createNodesTableSQL); err != nil {
+		return fmt.Errorf("failed to create nodes table: %w", err)
+	}
+
+	createServiceInstancesTableSQL := `
+	CREATE TABLE IF NOT EXISTS service_instances (
+		id TEXT PRIMARY KEY,
+		node_id TEXT NOT NULL,
+		name TEXT NOT NULL,
+		description TEXT,
+		service_type TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'stopped',
+		port INTEGER NOT NULL,
+		protocol TEXT NOT NULL,
+		config TEXT,
+		tags TEXT,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		last_seen DATETIME,
+		FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+	);`
+	if _, err := s.db.Exec(createServiceInstancesTableSQL); err != nil {
+		return fmt.Errorf("failed to create service_instances table: %w", err)
+	}
+
+	createAgentTokensTableSQL := `
+	CREATE TABLE IF NOT EXISTS agent_tokens (
+		id TEXT PRIMARY KEY,
+		node_id TEXT NOT NULL,
+		token TEXT UNIQUE NOT NULL,
+		name TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'active',
+		expires_at DATETIME,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		last_used DATETIME,
+		FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+	);`
+	if _, err := s.db.Exec(createAgentTokensTableSQL); err != nil {
+		return fmt.Errorf("failed to create agent_tokens table: %w", err)
+	}
+
+	// Create indexes for better performance
+	createIndexesSQL := []string{
+		`CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_nodes_hostname ON nodes(hostname);`,
+		`CREATE INDEX IF NOT EXISTS idx_service_instances_node_id ON service_instances(node_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_service_instances_type ON service_instances(service_type);`,
+		`CREATE INDEX IF NOT EXISTS idx_service_instances_status ON service_instances(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_tokens_node_id ON agent_tokens(node_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_tokens_token ON agent_tokens(token);`,
+		`CREATE INDEX IF NOT EXISTS idx_agent_tokens_status ON agent_tokens(status);`,
+	}
+
+	for _, indexSQL := range createIndexesSQL {
+		if _, err := s.db.Exec(indexSQL); err != nil {
+			return fmt.Errorf("failed to create index: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -958,6 +1037,672 @@ func (s *SQLiteStore) DeleteXrayConfig(ctx context.Context, id string) error {
 		return fmt.Errorf("xray config with id %s not found for deletion: %w", id, sql.ErrNoRows)
 	}
 	return nil
+}
+
+// V2 Node Management Methods
+
+// CreateNode creates a new node in the database
+func (s *SQLiteStore) CreateNode(ctx context.Context, node *models.NodeCreateV2) (*models.NodeV2, error) {
+	id := "node-" + uuid.New().String()
+	now := time.Now()
+
+	// Marshal tags to JSON
+	tagsJSON, err := marshalToJSON(node.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal tags: %w", err)
+	}
+
+	query := `
+		INSERT INTO nodes (id, name, description, hostname, ip_address, port, status, tags, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, 'inactive', ?, ?, ?)
+	`
+
+	_, err = s.db.ExecContext(ctx, query, id, node.Name, node.Description, node.Hostname, node.IPAddress, node.Port, tagsJSON.String, now, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create node: %w", err)
+	}
+
+	return s.GetNode(ctx, id)
+}
+
+// GetNode retrieves a node by ID
+func (s *SQLiteStore) GetNode(ctx context.Context, id string) (*models.NodeV2, error) {
+	query := `
+		SELECT id, name, description, hostname, ip_address, port, status, os_info, agent_info, tags, created_at, updated_at, last_seen
+		FROM nodes WHERE id = ?
+	`
+
+	row := s.db.QueryRowContext(ctx, query, id)
+
+	var node models.NodeV2
+	var osInfoJSON, agentInfoJSON, tagsJSON sql.NullString
+	var lastSeen sql.NullTime
+
+	err := row.Scan(
+		&node.ID, &node.Name, &node.Description, &node.Hostname, &node.IPAddress, &node.Port, &node.Status,
+		&osInfoJSON, &agentInfoJSON, &tagsJSON, &node.CreatedAt, &node.UpdatedAt, &lastSeen,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, models.ErrNodeNotFound
+		}
+		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+
+	// Unmarshal JSON fields
+	if osInfoJSON.Valid {
+		var osInfo models.OSInfo
+		if err := json.Unmarshal([]byte(osInfoJSON.String), &osInfo); err == nil {
+			node.OSInfo = &osInfo
+		}
+	}
+
+	if agentInfoJSON.Valid {
+		var agentInfo models.AgentInfo
+		if err := json.Unmarshal([]byte(agentInfoJSON.String), &agentInfo); err == nil {
+			node.AgentInfo = &agentInfo
+		}
+	}
+
+	if tagsJSON.Valid {
+		if err := json.Unmarshal([]byte(tagsJSON.String), &node.Tags); err != nil {
+			node.Tags = []string{}
+		}
+	}
+
+	if lastSeen.Valid {
+		node.LastSeen = &lastSeen.Time
+	}
+
+	return &node, nil
+}
+
+// ListNodes retrieves nodes with filtering and pagination
+func (s *SQLiteStore) ListNodes(ctx context.Context, filters models.NodeFilters, limit, offset int) ([]*models.NodeV2, error) {
+	query := `
+		SELECT id, name, description, hostname, ip_address, port, status, os_info, agent_info, tags, created_at, updated_at, last_seen
+		FROM nodes WHERE 1=1
+	`
+	args := []interface{}{}
+
+	// Apply filters
+	if filters.Status != "" {
+		query += " AND status = ?"
+		args = append(args, filters.Status)
+	}
+	if filters.Hostname != "" {
+		query += " AND hostname LIKE ?"
+		args = append(args, "%"+filters.Hostname+"%")
+	}
+
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	}
+	defer rows.Close()
+
+	var nodes []*models.NodeV2
+	for rows.Next() {
+		var node models.NodeV2
+		var osInfoJSON, agentInfoJSON, tagsJSON sql.NullString
+		var lastSeen sql.NullTime
+
+		err := rows.Scan(
+			&node.ID, &node.Name, &node.Description, &node.Hostname, &node.IPAddress, &node.Port, &node.Status,
+			&osInfoJSON, &agentInfoJSON, &tagsJSON, &node.CreatedAt, &node.UpdatedAt, &lastSeen,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan node: %w", err)
+		}
+
+		// Unmarshal JSON fields
+		if osInfoJSON.Valid {
+			var osInfo models.OSInfo
+			if err := json.Unmarshal([]byte(osInfoJSON.String), &osInfo); err == nil {
+				node.OSInfo = &osInfo
+			}
+		}
+
+		if agentInfoJSON.Valid {
+			var agentInfo models.AgentInfo
+			if err := json.Unmarshal([]byte(agentInfoJSON.String), &agentInfo); err == nil {
+				node.AgentInfo = &agentInfo
+			}
+		}
+
+		if tagsJSON.Valid {
+			if err := json.Unmarshal([]byte(tagsJSON.String), &node.Tags); err != nil {
+				node.Tags = []string{}
+			}
+		}
+
+		if lastSeen.Valid {
+			node.LastSeen = &lastSeen.Time
+		}
+
+		nodes = append(nodes, &node)
+	}
+
+	return nodes, nil
+}
+
+// UpdateNode updates an existing node
+func (s *SQLiteStore) UpdateNode(ctx context.Context, id string, updates *models.NodeUpdateV2) (*models.NodeV2, error) {
+	// Check if node exists
+	_, err := s.GetNode(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build dynamic update query
+	setClauses := []string{"updated_at = ?"}
+	args := []interface{}{time.Now()}
+
+	if updates.Name != nil {
+		setClauses = append(setClauses, "name = ?")
+		args = append(args, *updates.Name)
+	}
+	if updates.Description != nil {
+		setClauses = append(setClauses, "description = ?")
+		args = append(args, *updates.Description)
+	}
+	if updates.Hostname != nil {
+		setClauses = append(setClauses, "hostname = ?")
+		args = append(args, *updates.Hostname)
+	}
+	if updates.IPAddress != nil {
+		setClauses = append(setClauses, "ip_address = ?")
+		args = append(args, *updates.IPAddress)
+	}
+	if updates.Port != nil {
+		setClauses = append(setClauses, "port = ?")
+		args = append(args, *updates.Port)
+	}
+	if updates.Status != nil {
+		setClauses = append(setClauses, "status = ?")
+		args = append(args, *updates.Status)
+	}
+	if updates.Tags != nil {
+		tagsJSON, err := marshalToJSON(updates.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal tags: %w", err)
+		}
+		setClauses = append(setClauses, "tags = ?")
+		args = append(args, tagsJSON.String)
+	}
+
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE nodes SET %s WHERE id = ?", strings.Join(setClauses, ", "))
+
+	_, err = s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update node: %w", err)
+	}
+
+	return s.GetNode(ctx, id)
+}
+
+// DeleteNode deletes a node and all its service instances
+func (s *SQLiteStore) DeleteNode(ctx context.Context, id string) error {
+	// Check if node exists
+	_, err := s.GetNode(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	query := "DELETE FROM nodes WHERE id = ?"
+	_, err = s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete node: %w", err)
+	}
+
+	return nil
+}
+
+// V2 Service Instance Management Methods
+
+// CreateServiceInstance creates a new service instance
+func (s *SQLiteStore) CreateServiceInstance(ctx context.Context, nodeId string, service *models.ServiceInstanceCreateV2) (*models.ServiceInstanceV2, error) {
+	// Check if node exists
+	_, err := s.GetNode(ctx, nodeId)
+	if err != nil {
+		return nil, err
+	}
+
+	id := "service-" + uuid.New().String()
+	now := time.Now()
+
+	// Marshal config and tags to JSON
+	configJSON, err := marshalToJSON(service.Config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	tagsJSON, err := marshalToJSON(service.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal tags: %w", err)
+	}
+
+	query := `
+		INSERT INTO service_instances (id, node_id, name, description, service_type, status, port, protocol, config, tags, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'stopped', ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.ExecContext(ctx, query, id, nodeId, service.Name, service.Description, service.ServiceType, service.Port, service.Protocol, configJSON.String, tagsJSON.String, now, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create service instance: %w", err)
+	}
+
+	return s.GetServiceInstance(ctx, nodeId, id)
+}
+
+// GetServiceInstance retrieves a service instance by node ID and service ID
+func (s *SQLiteStore) GetServiceInstance(ctx context.Context, nodeId, serviceId string) (*models.ServiceInstanceV2, error) {
+	query := `
+		SELECT id, node_id, name, description, service_type, status, port, protocol, config, tags, created_at, updated_at, last_seen
+		FROM service_instances WHERE node_id = ? AND id = ?
+	`
+
+	row := s.db.QueryRowContext(ctx, query, nodeId, serviceId)
+
+	var service models.ServiceInstanceV2
+	var configJSON, tagsJSON sql.NullString
+	var lastSeen sql.NullTime
+
+	err := row.Scan(
+		&service.ID, &service.NodeID, &service.Name, &service.Description, &service.ServiceType, &service.Status,
+		&service.Port, &service.Protocol, &configJSON, &tagsJSON, &service.CreatedAt, &service.UpdatedAt, &lastSeen,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, models.ErrServiceNotFound
+		}
+		return nil, fmt.Errorf("failed to get service instance: %w", err)
+	}
+
+	// Unmarshal JSON fields
+	if configJSON.Valid {
+		if err := json.Unmarshal([]byte(configJSON.String), &service.Config); err != nil {
+			service.Config = make(map[string]interface{})
+		}
+	}
+
+	if tagsJSON.Valid {
+		if err := json.Unmarshal([]byte(tagsJSON.String), &service.Tags); err != nil {
+			service.Tags = []string{}
+		}
+	}
+
+	if lastSeen.Valid {
+		service.LastSeen = &lastSeen.Time
+	}
+
+	return &service, nil
+}
+
+// ListServiceInstances retrieves service instances for a node with pagination
+func (s *SQLiteStore) ListServiceInstances(ctx context.Context, nodeId string, limit, offset int) ([]*models.ServiceInstanceV2, error) {
+	query := `
+		SELECT id, node_id, name, description, service_type, status, port, protocol, config, tags, created_at, updated_at, last_seen
+		FROM service_instances WHERE node_id = ?
+		ORDER BY created_at DESC LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, nodeId, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list service instances: %w", err)
+	}
+	defer rows.Close()
+
+	var services []*models.ServiceInstanceV2
+	for rows.Next() {
+		var service models.ServiceInstanceV2
+		var configJSON, tagsJSON sql.NullString
+		var lastSeen sql.NullTime
+
+		err := rows.Scan(
+			&service.ID, &service.NodeID, &service.Name, &service.Description, &service.ServiceType, &service.Status,
+			&service.Port, &service.Protocol, &configJSON, &tagsJSON, &service.CreatedAt, &service.UpdatedAt, &lastSeen,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan service instance: %w", err)
+		}
+
+		// Unmarshal JSON fields
+		if configJSON.Valid {
+			if err := json.Unmarshal([]byte(configJSON.String), &service.Config); err != nil {
+				service.Config = make(map[string]interface{})
+			}
+		}
+
+		if tagsJSON.Valid {
+			if err := json.Unmarshal([]byte(tagsJSON.String), &service.Tags); err != nil {
+				service.Tags = []string{}
+			}
+		}
+
+		if lastSeen.Valid {
+			service.LastSeen = &lastSeen.Time
+		}
+
+		services = append(services, &service)
+	}
+
+	return services, nil
+}
+
+// UpdateServiceInstance updates an existing service instance
+func (s *SQLiteStore) UpdateServiceInstance(ctx context.Context, nodeId, serviceId string, updates *models.ServiceInstanceUpdateV2) (*models.ServiceInstanceV2, error) {
+	// Check if service instance exists
+	_, err := s.GetServiceInstance(ctx, nodeId, serviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build dynamic update query
+	setClauses := []string{"updated_at = ?"}
+	args := []interface{}{time.Now()}
+
+	if updates.Name != nil {
+		setClauses = append(setClauses, "name = ?")
+		args = append(args, *updates.Name)
+	}
+	if updates.Description != nil {
+		setClauses = append(setClauses, "description = ?")
+		args = append(args, *updates.Description)
+	}
+	if updates.Port != nil {
+		setClauses = append(setClauses, "port = ?")
+		args = append(args, *updates.Port)
+	}
+	if updates.Protocol != nil {
+		setClauses = append(setClauses, "protocol = ?")
+		args = append(args, *updates.Protocol)
+	}
+	if updates.Status != nil {
+		setClauses = append(setClauses, "status = ?")
+		args = append(args, *updates.Status)
+	}
+	if updates.Config != nil {
+		configJSON, err := marshalToJSON(updates.Config)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal config: %w", err)
+		}
+		setClauses = append(setClauses, "config = ?")
+		args = append(args, configJSON.String)
+	}
+	if updates.Tags != nil {
+		tagsJSON, err := marshalToJSON(updates.Tags)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal tags: %w", err)
+		}
+		setClauses = append(setClauses, "tags = ?")
+		args = append(args, tagsJSON.String)
+	}
+
+	args = append(args, nodeId, serviceId)
+	query := fmt.Sprintf("UPDATE service_instances SET %s WHERE node_id = ? AND id = ?", strings.Join(setClauses, ", "))
+
+	_, err = s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update service instance: %w", err)
+	}
+
+	return s.GetServiceInstance(ctx, nodeId, serviceId)
+}
+
+// DeleteServiceInstance deletes a service instance
+func (s *SQLiteStore) DeleteServiceInstance(ctx context.Context, nodeId, serviceId string) error {
+	// Check if service instance exists
+	_, err := s.GetServiceInstance(ctx, nodeId, serviceId)
+	if err != nil {
+		return err
+	}
+
+	query := "DELETE FROM service_instances WHERE node_id = ? AND id = ?"
+	_, err = s.db.ExecContext(ctx, query, nodeId, serviceId)
+	if err != nil {
+		return fmt.Errorf("failed to delete service instance: %w", err)
+	}
+
+	return nil
+}
+
+// CreateAgentToken creates a new agent token
+func (s *SQLiteStore) CreateAgentToken(ctx context.Context, token *models.AgentTokenCreate) (*models.AgentToken, error) {
+	now := time.Now()
+	id := "token-" + uuid.New().String()
+	tokenValue := "agt_" + uuid.New().String() + uuid.New().String()[:16] // Generate secure token
+
+	query := `
+		INSERT INTO agent_tokens (id, node_id, token, name, status, expires_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+	`
+
+	_, err := s.db.ExecContext(ctx, query, id, token.NodeID, tokenValue, token.Name, token.ExpiresAt, now, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agent token: %w", err)
+	}
+
+	return s.GetAgentToken(ctx, id)
+}
+
+// GetAgentToken retrieves an agent token by ID
+func (s *SQLiteStore) GetAgentToken(ctx context.Context, id string) (*models.AgentToken, error) {
+	query := `
+		SELECT id, node_id, token, name, status, expires_at, created_at, updated_at, last_used
+		FROM agent_tokens
+		WHERE id = ?
+	`
+
+	var token models.AgentToken
+	var expiresAt, lastUsed sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&token.ID,
+		&token.NodeID,
+		&token.Token,
+		&token.Name,
+		&token.Status,
+		&expiresAt,
+		&token.CreatedAt,
+		&token.UpdatedAt,
+		&lastUsed,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("agent token not found")
+		}
+		return nil, fmt.Errorf("failed to get agent token: %w", err)
+	}
+
+	if expiresAt.Valid {
+		token.ExpiresAt = &expiresAt.Time
+	}
+	if lastUsed.Valid {
+		token.LastUsed = &lastUsed.Time
+	}
+
+	return &token, nil
+}
+
+// GetAgentTokenByToken retrieves an agent token by token value
+func (s *SQLiteStore) GetAgentTokenByToken(ctx context.Context, tokenValue string) (*models.AgentToken, error) {
+	query := `
+		SELECT id, node_id, token, name, status, expires_at, created_at, updated_at, last_used
+		FROM agent_tokens
+		WHERE token = ?
+	`
+
+	var token models.AgentToken
+	var expiresAt, lastUsed sql.NullTime
+
+	err := s.db.QueryRowContext(ctx, query, tokenValue).Scan(
+		&token.ID,
+		&token.NodeID,
+		&token.Token,
+		&token.Name,
+		&token.Status,
+		&expiresAt,
+		&token.CreatedAt,
+		&token.UpdatedAt,
+		&lastUsed,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("agent token not found")
+		}
+		return nil, fmt.Errorf("failed to get agent token: %w", err)
+	}
+
+	if expiresAt.Valid {
+		token.ExpiresAt = &expiresAt.Time
+	}
+	if lastUsed.Valid {
+		token.LastUsed = &lastUsed.Time
+	}
+
+	return &token, nil
+}
+
+// ListAgentTokens retrieves a list of agent tokens with optional filters
+func (s *SQLiteStore) ListAgentTokens(ctx context.Context, filters models.AgentTokenFilters, limit, offset int) ([]*models.AgentToken, error) {
+	query := `
+		SELECT id, node_id, token, name, status, expires_at, created_at, updated_at, last_used
+		FROM agent_tokens
+		WHERE 1=1
+	`
+	args := []interface{}{}
+
+	if filters.NodeID != "" {
+		query += " AND node_id = ?"
+		args = append(args, filters.NodeID)
+	}
+
+	if filters.Status != "" {
+		query += " AND status = ?"
+		args = append(args, filters.Status)
+	}
+
+	query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agent tokens: %w", err)
+	}
+	defer rows.Close()
+
+	var tokens []*models.AgentToken
+	for rows.Next() {
+		var token models.AgentToken
+		var expiresAt, lastUsed sql.NullTime
+
+		err := rows.Scan(
+			&token.ID,
+			&token.NodeID,
+			&token.Token,
+			&token.Name,
+			&token.Status,
+			&expiresAt,
+			&token.CreatedAt,
+			&token.UpdatedAt,
+			&lastUsed,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan agent token: %w", err)
+		}
+
+		if expiresAt.Valid {
+			token.ExpiresAt = &expiresAt.Time
+		}
+		if lastUsed.Valid {
+			token.LastUsed = &lastUsed.Time
+		}
+
+		tokens = append(tokens, &token)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate agent tokens: %w", err)
+	}
+
+	return tokens, nil
+}
+
+// UpdateAgentToken updates an agent token
+func (s *SQLiteStore) UpdateAgentToken(ctx context.Context, id string, updates *models.AgentTokenUpdate) (*models.AgentToken, error) {
+	// Check if token exists
+	_, err := s.GetAgentToken(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	setClauses := []string{}
+	args := []interface{}{}
+
+	if updates.Name != nil {
+		setClauses = append(setClauses, "name = ?")
+		args = append(args, *updates.Name)
+	}
+
+	if updates.Status != nil {
+		setClauses = append(setClauses, "status = ?")
+		args = append(args, *updates.Status)
+	}
+
+	if updates.ExpiresAt != nil {
+		setClauses = append(setClauses, "expires_at = ?")
+		args = append(args, *updates.ExpiresAt)
+	}
+
+	if len(setClauses) == 0 {
+		return s.GetAgentToken(ctx, id)
+	}
+
+	setClauses = append(setClauses, "updated_at = ?")
+	args = append(args, time.Now())
+	args = append(args, id)
+
+	query := fmt.Sprintf("UPDATE agent_tokens SET %s WHERE id = ?", strings.Join(setClauses, ", "))
+
+	_, err = s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update agent token: %w", err)
+	}
+
+	return s.GetAgentToken(ctx, id)
+}
+
+// DeleteAgentToken deletes an agent token
+func (s *SQLiteStore) DeleteAgentToken(ctx context.Context, id string) error {
+	// Check if token exists
+	_, err := s.GetAgentToken(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	query := "DELETE FROM agent_tokens WHERE id = ?"
+	_, err = s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete agent token: %w", err)
+	}
+
+	return nil
+}
+
+// RevokeAgentToken revokes an agent token by setting its status to 'revoked'
+func (s *SQLiteStore) RevokeAgentToken(ctx context.Context, id string) error {
+	status := "revoked"
+	updates := &models.AgentTokenUpdate{
+		Status: &status,
+	}
+
+	_, err := s.UpdateAgentToken(ctx, id, updates)
+	return err
 }
 
 // Close closes the database connection.

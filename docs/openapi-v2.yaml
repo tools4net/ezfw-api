@@ -1,0 +1,590 @@
+openapi: 3.0.3
+info:
+  title: Network Management Panel API (v2 - Multi-Service)
+  version: v2.0.0
+  description: |-
+    API for managing network nodes and multiple, diverse service instances on them.
+    Supports visual configuration and inferred network topology.
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: http://localhost:8000/api/v2
+    description: Local development server for v2 API
+  - url: https://api.example.com/api/v2
+    description: Production server for v2 API
+
+tags:
+  - name: Nodes
+    description: Manage physical or virtual server nodes.
+  - name: ServiceInstances
+    description: Manage service instances (Xray, Nginx, etc.) running on nodes.
+  - name: AgentComms
+    description: API endpoints for communication with node agents (v2).
+
+components:
+  schemas:
+    ApiErrorV2:
+      type: object
+      description: Standard API error response structure.
+      required: [statusCode, error, message]
+      properties:
+        statusCode: { type: integer, format: int32, example: 400 }
+        error: { type: string, example: "Bad Request" }
+        message: { type: string, example: "Validation failed." }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string, example: "node.name" }
+              issue: { type: string, example: "Cannot be empty." }
+          nullable: true
+
+    NodeV2:
+      type: object
+      description: Represents a physical or virtual server.
+      required: [id, name, ipAddress, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        name: { type: string, example: "Prod-Web-01" }
+        ipAddress: { type: string, example: "198.51.100.10" }
+        additionalIPs: { type: array, items: { type: string }, nullable: true }
+        osInfo: { type: string, example: "Ubuntu 22.04 LTS", nullable: true }
+        description: { type: string, nullable: true }
+        tags: { type: array, items: { type: string }, nullable: true }
+        agentVersion: { type: string, readOnly: true, nullable: true }
+        status: { type: string, enum: [healthy, unhealthy, unreachable, provisioning], readOnly: true, nullable: true }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    NodeCreateV2:
+      type: object
+      description: Payload for creating a new node.
+      required: [name, ipAddress]
+      properties:
+        name: { type: string }
+        ipAddress: { type: string }
+        additionalIPs: { type: array, items: { type: string }, nullable: true }
+        osInfo: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        tags: { type: array, items: { type: string }, nullable: true }
+
+    NodeUpdateV2:
+      type: object
+      description: Payload for updating an existing node.
+      properties: # All optional for PATCH
+        name: { type: string, nullable: true }
+        ipAddress: { type: string, nullable: true }
+        additionalIPs: { type: array, items: { type: string }, nullable: true }
+        osInfo: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        tags: { type: array, items: { type: string }, nullable: true }
+
+    PaginatedNodeListResponseV2:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NodeV2' }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    ExposedPort:
+      type: object
+      required: [port, protocol]
+      properties:
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        protocol: { type: string, enum: [tcp, udp] }
+        description: { type: string, nullable: true }
+
+    # --- Xray Schemas ---
+    XrayLogLevel: { type: string, enum: [debug, info, warning, error, none], default: warning }
+    XrayLogConfig:
+      type: object
+      properties:
+        access: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        loglevel: { $ref: '#/components/schemas/XrayLogLevel' }
+    XrayDnsServerConfig:
+      type: object
+      properties:
+        address: { type: string }
+        port: { type: integer, nullable: true }
+        domains: { type: array, items: { type: string }, nullable: true }
+    XrayDnsConfig:
+      type: object
+      properties:
+        servers: { type: array, items: { $ref: '#/components/schemas/XrayDnsServerConfig' }, nullable: true }
+    XrayStreamSettingsBase:
+      type: object
+      properties:
+        network: { type: string, enum: [tcp, kcp, ws, http, quic, grpc], default: tcp }
+        security: { type: string, enum: [none, tls, reality], default: none }
+        # tlsSettings, realitySettings, wsSettings etc. would be objects here
+    XrayInboundClientSettings:
+      type: object
+      required: [id]
+      properties: { id: { type: string, format: uuid } }
+    XrayInboundSniffingConfig:
+      type: object
+      properties:
+        enabled: { type: boolean, default: true }
+        destOverride: { type: array, items: { type: string }, nullable: true }
+    XrayInboundConfig:
+      type: object
+      required: [tag, port, protocol, settings]
+      properties:
+        tag: { type: string }
+        port: { type: integer }
+        listen: { type: string, nullable: true }
+        protocol: { type: string, enum: [dokodemo-door, http, shadowsocks, socks, trojan, vless, vmess] }
+        settings: { type: object, properties: { clients: { type: array, items: { $ref: '#/components/schemas/XrayInboundClientSettings' }, nullable: true } } }
+        streamSettings: { $ref: '#/components/schemas/XrayStreamSettingsBase' , nullable: true }
+        sniffing: { $ref: '#/components/schemas/XrayInboundSniffingConfig', nullable: true }
+    XrayOutboundSettings:
+      type: object
+      properties:
+        domainStrategy: { type: string, enum: [AsIs, UseIP, UseIPv4, UseIPv6], nullable: true }
+        vnext: { type: array, items: { type: object, properties: { address: { type: string }, port: { type: integer }, users: { type: array, items: { $ref: '#/components/schemas/XrayInboundClientSettings' } } } } }
+    XrayOutboundConfig:
+      type: object
+      required: [tag, protocol]
+      properties:
+        tag: { type: string }
+        protocol: { type: string, enum: [blackhole, dns, freedom, http, loopback, shadowsocks, socks, trojan, vless, vmess] }
+        settings: { $ref: '#/components/schemas/XrayOutboundSettings', nullable: true }
+        streamSettings: { $ref: '#/components/schemas/XrayStreamSettingsBase', nullable: true }
+    XrayRoutingRule:
+      type: object
+      properties:
+        type: { type: string, enum: [field], default: field }
+        inboundTag: { type: array, items: { type: string }, nullable: true }
+        outboundTag: { type: string, nullable: true }
+        domain: { type: array, items: { type: string }, nullable: true, example: ["geosite:google"] }
+    XrayRoutingConfig:
+      type: object
+      properties:
+        domainStrategy: { type: string, enum: [AsIs, IPIfNonMatch, IPOnDemand] }
+        rules: { type: array, items: { $ref: '#/components/schemas/XrayRoutingRule' } }
+    XrayServiceConfigV2:
+      type: object
+      description: Configuration for an Xray-core service instance.
+      required: [serviceType, inbounds, outbounds]
+      properties:
+        serviceType: { type: string, enum: [xray], description: "Discriminator field." }
+        log: { $ref: '#/components/schemas/XrayLogConfig', nullable: true }
+        dns: { $ref: '#/components/schemas/XrayDnsConfig', nullable: true }
+        inbounds: { type: array, items: { $ref: '#/components/schemas/XrayInboundConfig' }, minItems: 1 }
+        outbounds: { type: array, items: { $ref: '#/components/schemas/XrayOutboundConfig' }, minItems: 1 }
+        routing: { $ref: '#/components/schemas/XrayRoutingConfig', nullable: true }
+      example:
+        serviceType: "xray"
+        log: { loglevel: "warning" }
+        inbounds: [{ tag: "vless-in", port: 10001, protocol: "vless", settings: { clients: [{id: "your-uuid"}] } }]
+        outbounds: [{ tag: "direct", protocol: "freedom" }]
+        routing: { rules: [{ type: "field", outboundTag: "direct"}] }
+
+    # --- Singbox Schemas (Conceptual Stubs) ---
+    SingboxInboundConfig: { type: object, properties: { tag: {type: string}, type: {type: string}, listen_port: {type: integer} } } # Highly simplified
+    SingboxOutboundConfig: { type: object, properties: { tag: {type: string}, type: {type: string} } } # Highly simplified
+    SingboxRouteConfig: { type: object, properties: { rules: { type: array, items: {type: object} } } } # Highly simplified
+    SingboxServiceConfigV2:
+      type: object
+      description: Configuration for a Sing-box service instance.
+      required: [serviceType, inbounds, outbounds, route]
+      properties:
+        serviceType: { type: string, enum: [singbox], description: "Discriminator field." }
+        log: { type: object, properties: { level: {type: string}, output: {type: string} }, nullable: true }
+        dns: { type: object, properties: { servers: {type: array, items: {type: object}} }, nullable: true }
+        inbounds: { type: array, items: { $ref: '#/components/schemas/SingboxInboundConfig' } }
+        outbounds: { type: array, items: { $ref: '#/components/schemas/SingboxOutboundConfig' } }
+        route: { $ref: '#/components/schemas/SingboxRouteConfig' }
+      example:
+        serviceType: "singbox"
+        inbounds: [{tag: "sb-in", type: "mixed", listen_port: 10002}]
+        outbounds: [{tag: "sb-direct", type: "direct"}]
+        route: {rules: []}
+
+    # --- WireGuard Schemas ---
+    WireguardPeerConfigV2:
+      type: object
+      required: [publicKey, allowedIPs]
+      properties:
+        name: { type: string, nullable: true }
+        publicKey: { type: string }
+        presharedKeySecretName: { type: string, nullable: true }
+        allowedIPs: { type: array, items: { type: string }, minItems: 1 }
+        endpoint: { type: string, nullable: true }
+        persistentKeepalive: { type: integer, nullable: true }
+    WireguardServerServiceConfigV2:
+      type: object
+      required: [serviceType, listenPort, privateKeySecretName, interfaceAddresses]
+      properties:
+        serviceType: { type: string, enum: [wireguard_server], description: "Discriminator field." }
+        listenPort: { type: integer }
+        privateKeySecretName: { type: string }
+        interfaceAddresses: { type: array, items: { type: string }, minItems: 1 }
+        mtu: { type: integer, nullable: true }
+        dnsServers: { type: array, items: { type: string }, nullable: true }
+        postUpScript: { type: string, nullable: true }
+        postDownScript: { type: string, nullable: true }
+        peers: { type: array, items: { $ref: '#/components/schemas/WireguardPeerConfigV2' }, nullable: true }
+      example:
+        serviceType: "wireguard_server"
+        listenPort: 51820
+        privateKeySecretName: "wg-server-privkey"
+        interfaceAddresses: ["10.100.0.1/24"]
+        peers: [{publicKey: "...", allowedIPs: ["10.100.0.2/32"]}]
+
+    # --- Nginx Schemas (from previous refinement) ---
+    NginxListenDirectiveV2: { type: object, properties: { port: {type: integer, default: 80}, ipAddress: {type: string, nullable: true}, isSsl: {type: boolean, default: false}, isHttp2: {type: boolean, default: false} } }
+    NginxLocationBlockV2: { type: object, required: [path], properties: { path: {type: string}, proxyPass: {type: string, nullable: true}, additionalDirectives: {type: array, items: {type: string}, nullable: true} } }
+    NginxUpstreamBlockV2: { type: object, required: [name, servers], properties: { name: {type: string}, servers: {type: array, items: {type: string}, minItems: 1}, lbMethod: {type: string, enum: [round_robin, least_conn, ip_hash], nullable: true} } }
+    NginxServerBlockV2: { type: object, required: [listen, locations], properties: { listen: {type: array, items: {$ref: '#/components/schemas/NginxListenDirectiveV2'}, minItems: 1}, serverName: {type: array, items: {type: string}, nullable: true}, locations: {type: array, items: {$ref: '#/components/schemas/NginxLocationBlockV2'}, minItems: 1}, sslCertificateSecretName: {type: string, nullable: true}, sslCertificateKeySecretName: {type: string, nullable: true} } }
+    NginxRProxyServiceConfigV2:
+      type: object
+      required: [serviceType, servers]
+      properties:
+        serviceType: { type: string, enum: [nginx_reverse_proxy], description: "Discriminator field." }
+        httpConfig: { type: object, properties: { logFormat: {type: string, nullable: true}, clientMaxBodySize: {type: string, nullable: true} }, nullable: true }
+        servers: { type: array, items: { $ref: '#/components/schemas/NginxServerBlockV2' }, minItems: 1 }
+        upstreams: { type: array, items: { $ref: '#/components/schemas/NginxUpstreamBlockV2' }, nullable: true }
+      example:
+        serviceType: "nginx_reverse_proxy"
+        servers: [{listen: [{port: 80}], serverName: ["example.com"], locations: [{path: "/", proxyPass: "http://backend"}]}]
+        upstreams: [{name: "backend", servers: ["127.0.0.1:8080"]}]
+
+    # --- HAProxy Schemas (Conceptual Stubs) ---
+    HaproxyFrontendConfig: { type: object, properties: { name: {type: string}, bind: {type: string}, default_backend: {type: string} } } # Simplified
+    HaproxyBackendConfig: { type: object, properties: { name: {type: string}, server: {type: array, items: {type: string}} } } # Simplified
+    HaproxyLBServiceConfigV2:
+      type: object
+      required: [serviceType, frontends, backends]
+      properties:
+        serviceType: { type: string, enum: [haproxy_load_balancer], description: "Discriminator field." }
+        global: { type: object, nullable: true }
+        defaults: { type: object, nullable: true }
+        frontends: { type: array, items: { $ref: '#/components/schemas/HaproxyFrontendConfig' } }
+        backends: { type: array, items: { $ref: '#/components/schemas/HaproxyBackendConfig' } }
+      example:
+        serviceType: "haproxy_load_balancer"
+        frontends: [{name: "http-in", bind: "*:80", default_backend: "web_servers"}]
+        backends: [{name: "web_servers", server: ["srv1 10.0.0.1:80 check"]}]
+
+    # --- ServiceInstanceV2 and related ---
+    ServiceInstanceV2:
+      type: object
+      required: [id, nodeId, name, type, status, isEnabled, config, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        nodeId: { type: string, format: uuid, readOnly: true }
+        name: { type: string }
+        type: { type: string, enum: [xray, singbox, wireguard_server, nginx_reverse_proxy, haproxy_load_balancer] }
+        status: { type: string, enum: [creating, running, stopped, error, updating, unhealthy], readOnly: true }
+        isEnabled: { type: boolean, default: true }
+        config:
+          type: object
+          oneOf:
+            - { $ref: '#/components/schemas/XrayServiceConfigV2' }
+            - { $ref: '#/components/schemas/SingboxServiceConfigV2' }
+            - { $ref: '#/components/schemas/WireguardServerServiceConfigV2' }
+            - { $ref: '#/components/schemas/NginxRProxyServiceConfigV2' }
+            - { $ref: '#/components/schemas/HaproxyLBServiceConfigV2' }
+          discriminator: { propertyName: serviceType }
+        exposedPorts: { type: array, items: { $ref: '#/components/schemas/ExposedPort'}, readOnly: true, nullable: true }
+        createdAt: { type: string, format: date-time, readOnly: true }
+        updatedAt: { type: string, format: date-time, readOnly: true }
+
+    ServiceInstanceCreateV2:
+      type: object
+      required: [name, type, config]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [xray, singbox, wireguard_server, nginx_reverse_proxy, haproxy_load_balancer] }
+        isEnabled: { type: boolean, default: true }
+        config: # Client sends specific config object matching 'type'
+          type: object
+          oneOf: # Same as ServiceInstanceV2.config.oneOf
+            - { $ref: '#/components/schemas/XrayServiceConfigV2' }
+            - { $ref: '#/components/schemas/SingboxServiceConfigV2' }
+            - { $ref: '#/components/schemas/WireguardServerServiceConfigV2' }
+            - { $ref: '#/components/schemas/NginxRProxyServiceConfigV2' }
+            - { $ref: '#/components/schemas/HaproxyLBServiceConfigV2' }
+          discriminator: { propertyName: serviceType }
+
+    ServiceInstanceUpdateV2:
+      type: object
+      properties: # All optional for PATCH
+        name: { type: string, nullable: true }
+        isEnabled: { type: boolean, nullable: true }
+        config: # Same as Create, but config itself nullable
+          type: object
+          nullable: true
+          oneOf: # Same as ServiceInstanceV2.config.oneOf
+            - { $ref: '#/components/schemas/XrayServiceConfigV2' }
+            - { $ref: '#/components/schemas/SingboxServiceConfigV2' }
+            - { $ref: '#/components/schemas/WireguardServerServiceConfigV2' }
+            - { $ref: '#/components/schemas/NginxRProxyServiceConfigV2' }
+            - { $ref: '#/components/schemas/HaproxyLBServiceConfigV2' }
+          discriminator: { propertyName: serviceType }
+
+    ServiceInstanceListResponseV2:
+      type: object
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ServiceInstanceV2' } }
+        total: { type: integer }
+
+    # --- Agent API Schemas ---
+    AgentTask:
+      type: object
+      required: [taskId, taskType]
+      properties:
+        taskId: { type: string, format: uuid }
+        taskType: { type: string, enum: [apply_service_config, update_service_status, run_command] }
+        serviceId: { type: string, format: uuid, nullable: true }
+        payload: { type: object, nullable: true }
+    AgentHeartbeatPayload:
+      type: object
+      properties: { agentVersion: {type: string}, osInfo: {type: string} }
+    AgentHeartbeatResponse:
+      type: object
+      properties: { tasks: {type: array, items: {$ref: '#/components/schemas/AgentTask'}, nullable: true} }
+    AgentServiceConfigInfo:
+      type: object
+      properties: { serviceId: {type: string, format: uuid}, type: {type: string}, configHash: {type: string}, fullGeneratedConfig: {type: string} }
+    AgentServiceConfigListResponse:
+      type: object
+      properties: { services: {type: array, items: {$ref: '#/components/schemas/AgentServiceConfigInfo'}} }
+    AgentServiceStatusReport:
+      type: object
+      properties: { serviceId: {type: string, format: uuid}, status: {type: string}, message: {type: string, nullable: true}, appliedConfigHash: {type: string, nullable: true}, exposedPorts: {type: array, items: {$ref: '#/components/schemas/ExposedPort'}, nullable: true} }
+    AgentServiceStatusReportBatch:
+      type: object
+      properties: { reports: {type: array, items: {$ref: '#/components/schemas/AgentServiceStatusReport'}} }
+
+  securitySchemes:
+    ClerkAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    AgentTokenAuth: { type: apiKey, in: header, name: X-Agent-Token }
+
+  responses: # Reusable error responses
+    BadRequestErrorV2: { description: Bad Request, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorV2' } } } }
+    UnauthorizedErrorV2: { description: Unauthorized, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorV2' } } } }
+    ForbiddenErrorV2: { description: Forbidden, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorV2' } } } }
+    NotFoundErrorV2: { description: Not Found, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorV2' } } } }
+    ConflictErrorV2: { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorV2' } } } }
+
+paths:
+  /nodes:
+    get:
+      tags: [Nodes]
+      summary: List all managed nodes.
+      operationId: listNodesV2
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 20 } }
+        # Other filter params: name, ipAddress, tags, osInfo, status, sortBy, sortOrder
+      security: [{ ClerkAuth: [] }]
+      responses:
+        '200': { description: A paginated list of nodes., content: { application/json: { schema: { $ref: '#/components/schemas/PaginatedNodeListResponseV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+    post:
+      tags: [Nodes]
+      summary: Register a new node.
+      operationId: createNodeV2
+      security: [{ ClerkAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NodeCreateV2' } } } }
+      responses:
+        '201': { description: Node created., content: { application/json: { schema: { $ref: '#/components/schemas/NodeV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '409': { $ref: '#/components/responses/ConflictErrorV2' }
+
+  /nodes/{nodeId}:
+    get:
+      tags: [Nodes]
+      summary: Get a specific node.
+      operationId: getNodeByIdV2
+      parameters: [{ name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }]
+      security: [{ ClerkAuth: [] }]
+      responses:
+        '200': { description: Node details., content: { application/json: { schema: { $ref: '#/components/schemas/NodeV2' } } } }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+    put:
+      tags: [Nodes]
+      summary: Update a specific node (full update).
+      operationId: updateNodeV2
+      parameters: [{ name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }]
+      security: [{ ClerkAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NodeUpdateV2' } } } }
+      responses:
+        '200': { description: Node updated., content: { application/json: { schema: { $ref: '#/components/schemas/NodeV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+        '409': { $ref: '#/components/responses/ConflictErrorV2' }
+    patch:
+      tags: [Nodes]
+      summary: Partially update a specific node.
+      operationId: partialUpdateNodeV2
+      parameters: [{ name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }]
+      security: [{ ClerkAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NodeUpdateV2' } } } } # Schema fields are optional
+      responses:
+        '200': { description: Node updated., content: { application/json: { schema: { $ref: '#/components/schemas/NodeV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+        '409': { $ref: '#/components/responses/ConflictErrorV2' }
+    delete:
+      tags: [Nodes]
+      summary: Delete a node.
+      operationId: deleteNodeV2
+      parameters:
+        - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: force, in: query, schema: { type: boolean, default: false } }
+      security: [{ ClerkAuth: [] }]
+      responses:
+        '204': { description: Node deleted. }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' } # e.g. services exist and force=false
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+
+  /nodes/{nodeId}/services:
+    get:
+      tags: [ServiceInstances]
+      summary: List services on a node.
+      operationId: listNodeServicesV2
+      parameters:
+        - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+        # Query params: type, status, isEnabled
+      security: [{ ClerkAuth: [] }]
+      responses:
+        '200': { description: List of service instances., content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceListResponseV2' } } } }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' } # Node not found
+    post:
+      tags: [ServiceInstances]
+      summary: Create a service on a node.
+      operationId: createNodeServiceV2
+      parameters: [{ name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }]
+      security: [{ ClerkAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceCreateV2' } } } }
+      responses:
+        '201': { description: Service instance created., content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+        '409': { $ref: '#/components/responses/ConflictErrorV2' } # e.g. port conflict
+
+  /nodes/{nodeId}/services/{serviceId}:
+    get:
+      tags: [ServiceInstances]
+      summary: Get a specific service.
+      operationId: getNodeServiceByIdV2
+      parameters:
+        - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: serviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      security: [{ ClerkAuth: [] }]
+      responses:
+        '200': { description: Service instance details., content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceV2' } } } }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+    put:
+      tags: [ServiceInstances]
+      summary: Update a service (full config update).
+      operationId: updateNodeServiceV2
+      parameters:
+        - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: serviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      security: [{ ClerkAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceUpdateV2' } } } }
+      responses:
+        '200': { description: Service instance updated., content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+        '409': { $ref: '#/components/responses/ConflictErrorV2' }
+    patch:
+      tags: [ServiceInstances]
+      summary: Partially update a service.
+      operationId: partialUpdateNodeServiceV2
+      parameters:
+        - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: serviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      security: [{ ClerkAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceUpdateV2' } } } } # Fields optional
+      responses:
+        '200': { description: Service instance updated., content: { application/json: { schema: { $ref: '#/components/schemas/ServiceInstanceV2' } } } }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+        '409': { $ref: '#/components/responses/ConflictErrorV2' }
+    delete:
+      tags: [ServiceInstances]
+      summary: Delete a service.
+      operationId: deleteNodeServiceV2
+      parameters:
+        - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: serviceId, in: path, required: true, schema: { type: string, format: uuid } }
+      security: [{ ClerkAuth: [] }]
+      responses:
+        '204': { description: Service instance deleted. }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '403': { $ref: '#/components/responses/ForbiddenErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+
+  /agent/heartbeat:
+    post:
+      tags: [AgentComms]
+      summary: Agent reports health and gets tasks.
+      operationId: agentHeartbeatV2
+      security: [{ AgentTokenAuth: [] }]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/AgentHeartbeatPayload' } } } }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/AgentHeartbeatResponse' } } } }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' } # Invalid agent token
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' } # Node not recognized
+
+  /agent/services/configurations:
+    get:
+      tags: [AgentComms]
+      summary: Agent fetches all service configurations for its node.
+      operationId: getAgentServiceConfigsV2
+      security: [{ AgentTokenAuth: [] }]
+      # Query params: currentConfigHash (optional)
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/AgentServiceConfigListResponse' } } } }
+        '304': { description: Not Modified. }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' }
+
+  /agent/services/status_reports:
+    post:
+      tags: [AgentComms]
+      summary: Agent reports status of multiple services.
+      operationId: reportAgentServiceStatusesV2
+      security: [{ AgentTokenAuth: [] }]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/AgentServiceStatusReportBatch' } } } }
+      responses:
+        '202': { description: Status reports accepted. }
+        '400': { $ref: '#/components/responses/BadRequestErrorV2' }
+        '401': { $ref: '#/components/responses/UnauthorizedErrorV2' }
+        '404': { $ref: '#/components/responses/NotFoundErrorV2' } # Node not recognized
