@@ -12,7 +12,7 @@ import (
 	"github.com/tools4net/ezfw/backend/internal/api/routes"
 	"github.com/tools4net/ezfw/backend/internal/auth"
 	"github.com/tools4net/ezfw/backend/internal/store"
-	"github.com/tools4net/ezfw/backend/internal/store/sqlite"
+	entstore "github.com/tools4net/ezfw/backend/internal/store/ent"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -96,7 +96,7 @@ func NewLogger() (*zap.Logger, error) {
 	return zap.NewProduction()
 }
 
-// NewStore creates a new SQLite store
+// NewStore creates a new Ent store
 func NewStore(config *Config, logger *zap.Logger) (store.Store, error) {
 	// Create data directory
 	if err := os.MkdirAll(config.DataDir, 0755); err != nil {
@@ -105,13 +105,13 @@ func NewStore(config *Config, logger *zap.Logger) (store.Store, error) {
 
 	logger.Info("Using database", zap.String("path", config.DBPath))
 
-	// Initialize SQLite store
-	dbStore, err := sqlite.NewSQLiteStore(config.DBPath)
+	// Initialize Ent store
+	entStore, err := entstore.NewEntStore(config.DBPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize SQLite store: %w", err)
+		return nil, fmt.Errorf("failed to initialize Ent store: %w", err)
 	}
 
-	return dbStore, nil
+	return entStore, nil
 }
 
 // NewAuthMiddleware creates a new authentication middleware

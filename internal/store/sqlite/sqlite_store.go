@@ -148,6 +148,24 @@ func (s *SQLiteStore) initSchema() error {
 		return fmt.Errorf("failed to create agent_tokens table: %w", err)
 	}
 
+	createHAProxyTableSQL := `
+	CREATE TABLE IF NOT EXISTS haproxy_configs (
+		id TEXT PRIMARY KEY,
+		name TEXT UNIQUE NOT NULL,
+		description TEXT,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		global_config TEXT,
+		defaults_config TEXT,
+		frontends TEXT,
+		backends TEXT,
+		listens TEXT,
+		stats_config TEXT
+	);`
+	if _, err := s.db.Exec(createHAProxyTableSQL); err != nil {
+		return fmt.Errorf("failed to create haproxy_configs table: %w", err)
+	}
+
 	// Create indexes for better performance
 	createIndexesSQL := []string{
 		`CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status);`,
@@ -1703,6 +1721,179 @@ func (s *SQLiteStore) RevokeAgentToken(ctx context.Context, id string) error {
 
 	_, err := s.UpdateAgentToken(ctx, id, updates)
 	return err
+}
+
+// HAProxyConfig methods
+func (s *SQLiteStore) CreateHAProxyConfig(ctx context.Context, config *models.HAProxyConfig) error {
+	globalConfigJSON, _ := json.Marshal(config.Global)
+	defaultsConfigJSON, _ := json.Marshal(config.Defaults)
+	frontendsJSON, _ := json.Marshal(config.Frontends)
+	backendsJSON, _ := json.Marshal(config.Backends)
+	listensJSON, _ := json.Marshal(config.Listens)
+	statsConfigJSON, _ := json.Marshal(config.Stats)
+
+	query := `
+		INSERT INTO haproxy_configs (id, name, description, created_at, updated_at, global_config, defaults_config, frontends, backends, listens, stats_config)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	_, err := s.db.ExecContext(ctx, query, config.ID, config.Name, config.Description, config.CreatedAt, config.UpdatedAt,
+		string(globalConfigJSON), string(defaultsConfigJSON), string(frontendsJSON),
+		string(backendsJSON), string(listensJSON), string(statsConfigJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create haproxy config: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteStore) GetHAProxyConfig(ctx context.Context, id string) (*models.HAProxyConfig, error) {
+	query := `
+		SELECT id, name, description, created_at, updated_at, global_config, defaults_config, frontends, backends, listens, stats_config
+		FROM haproxy_configs
+		WHERE id = ?
+	`
+	row := s.db.QueryRowContext(ctx, query, id)
+
+	var config models.HAProxyConfig
+	var globalConfigJSON, defaultsConfigJSON, frontendsJSON, backendsJSON, listensJSON, statsConfigJSON sql.NullString
+
+	err := row.Scan(&config.ID, &config.Name, &config.Description, &config.CreatedAt, &config.UpdatedAt,
+		&globalConfigJSON, &defaultsConfigJSON, &frontendsJSON, &backendsJSON, &listensJSON, &statsConfigJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("haproxy config with id %s not found: %w", id, sql.ErrNoRows)
+		}
+		return nil, fmt.Errorf("failed to scan haproxy config: %w", err)
+	}
+
+	if err := unmarshalFromJSON(globalConfigJSON, &config.Global); err != nil {
+		return nil, fmt.Errorf("unmarshal Global: %w", err)
+	}
+	if err := unmarshalFromJSON(defaultsConfigJSON, &config.Defaults); err != nil {
+		return nil, fmt.Errorf("unmarshal Defaults: %w", err)
+	}
+	if err := unmarshalFromJSON(frontendsJSON, &config.Frontends); err != nil {
+		return nil, fmt.Errorf("unmarshal Frontends: %w", err)
+	}
+	if err := unmarshalFromJSON(backendsJSON, &config.Backends); err != nil {
+		return nil, fmt.Errorf("unmarshal Backends: %w", err)
+	}
+	if err := unmarshalFromJSON(listensJSON, &config.Listens); err != nil {
+		return nil, fmt.Errorf("unmarshal Listens: %w", err)
+	}
+	if err := unmarshalFromJSON(statsConfigJSON, &config.Stats); err != nil {
+		return nil, fmt.Errorf("unmarshal Stats: %w", err)
+	}
+
+	return &config, nil
+}
+
+func (s *SQLiteStore) ListHAProxyConfigs(ctx context.Context, limit, offset int) ([]*models.HAProxyConfig, error) {
+	query := `
+		SELECT id, name, description, created_at, updated_at, global_config, defaults_config, frontends, backends, listens, stats_config
+		FROM haproxy_configs
+		ORDER BY created_at DESC
+		LIMIT ? OFFSET ?
+	`
+	rows, err := s.db.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query haproxy configs: %w", err)
+	}
+	defer rows.Close()
+
+	var configs []*models.HAProxyConfig
+	for rows.Next() {
+		var config models.HAProxyConfig
+		var globalConfigJSON, defaultsConfigJSON, frontendsJSON, backendsJSON, listensJSON, statsConfigJSON sql.NullString
+
+		err := rows.Scan(&config.ID, &config.Name, &config.Description, &config.CreatedAt, &config.UpdatedAt,
+			&globalConfigJSON, &defaultsConfigJSON, &frontendsJSON, &backendsJSON, &listensJSON, &statsConfigJSON)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan haproxy config: %w", err)
+		}
+
+		if err := unmarshalFromJSON(globalConfigJSON, &config.Global); err != nil {
+			return nil, fmt.Errorf("unmarshal Global: %w", err)
+		}
+		if err := unmarshalFromJSON(defaultsConfigJSON, &config.Defaults); err != nil {
+			return nil, fmt.Errorf("unmarshal Defaults: %w", err)
+		}
+		if err := unmarshalFromJSON(frontendsJSON, &config.Frontends); err != nil {
+			return nil, fmt.Errorf("unmarshal Frontends: %w", err)
+		}
+		if err := unmarshalFromJSON(backendsJSON, &config.Backends); err != nil {
+			return nil, fmt.Errorf("unmarshal Backends: %w", err)
+		}
+		if err := unmarshalFromJSON(listensJSON, &config.Listens); err != nil {
+			return nil, fmt.Errorf("unmarshal Listens: %w", err)
+		}
+		if err := unmarshalFromJSON(statsConfigJSON, &config.Stats); err != nil {
+			return nil, fmt.Errorf("unmarshal Stats: %w", err)
+		}
+
+		configs = append(configs, &config)
+	}
+
+	return configs, nil
+}
+
+func (s *SQLiteStore) UpdateHAProxyConfig(ctx context.Context, config *models.HAProxyConfig) error {
+	// Marshal JSON fields
+	globalConfigJSON, err := json.Marshal(config.Global)
+	if err != nil {
+		return fmt.Errorf("failed to marshal global config: %w", err)
+	}
+	defaultsConfigJSON, err := json.Marshal(config.Defaults)
+	if err != nil {
+		return fmt.Errorf("failed to marshal defaults config: %w", err)
+	}
+	frontendsJSON, err := json.Marshal(config.Frontends)
+	if err != nil {
+		return fmt.Errorf("failed to marshal frontends: %w", err)
+	}
+	backendsJSON, err := json.Marshal(config.Backends)
+	if err != nil {
+		return fmt.Errorf("failed to marshal backends: %w", err)
+	}
+	listensJSON, err := json.Marshal(config.Listens)
+	if err != nil {
+		return fmt.Errorf("failed to marshal listens: %w", err)
+	}
+	statsConfigJSON, err := json.Marshal(config.Stats)
+	if err != nil {
+		return fmt.Errorf("failed to marshal stats config: %w", err)
+	}
+
+	config.UpdatedAt = time.Now()
+
+	query := `
+		UPDATE haproxy_configs
+		SET name = ?, description = ?, updated_at = ?, global_config = ?, defaults_config = ?, frontends = ?, backends = ?, listens = ?, stats_config = ?
+		WHERE id = ?
+	`
+	_, err = s.db.ExecContext(ctx, query, config.Name, config.Description, config.UpdatedAt,
+		string(globalConfigJSON), string(defaultsConfigJSON), string(frontendsJSON),
+		string(backendsJSON), string(listensJSON), string(statsConfigJSON), config.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update haproxy config: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) DeleteHAProxyConfig(ctx context.Context, id string) error {
+	// Check if config exists
+	_, err := s.GetHAProxyConfig(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	query := `DELETE FROM haproxy_configs WHERE id = ?`
+	_, err = s.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete haproxy config: %w", err)
+	}
+
+	return nil
 }
 
 // Close closes the database connection.

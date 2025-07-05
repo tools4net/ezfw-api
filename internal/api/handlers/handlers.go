@@ -264,3 +264,117 @@ func (h *ConfigHandler) GenerateXrayConfig(ctx context.Context, input *types.Gen
 	resp.Body = generatedConfig
 	return resp, nil
 }
+
+// HAProxy Config Handlers
+
+// CreateHAProxyConfig creates a new HAProxy configuration
+func (h *ConfigHandler) CreateHAProxyConfig(ctx context.Context, input *types.CreateHAProxyConfigInput) (*types.CreateHAProxyConfigResponse, error) {
+	config := input.Body
+
+	// Validate that the configuration name is not empty
+	if err := validateConfigName(config.Name, "HAProxy Configuration"); err != nil {
+		return nil, err
+	}
+
+	if err := h.store.CreateHAProxyConfig(ctx, &config); err != nil {
+		return nil, huma.Error500InternalServerError("Failed to create configuration: " + err.Error())
+	}
+
+	resp := &types.CreateHAProxyConfigResponse{}
+	resp.Body = config
+	return resp, nil
+}
+
+// ListHAProxyConfigs retrieves a paginated list of HAProxy configurations
+func (h *ConfigHandler) ListHAProxyConfigs(ctx context.Context, input *types.ListHAProxyConfigsInput) (*types.ListHAProxyConfigsResponse, error) {
+	configs, err := h.store.ListHAProxyConfigs(ctx, input.Limit, input.Offset)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("Failed to retrieve HAProxy configurations", err)
+	}
+
+	// Convert []*models.HAProxyConfig to []models.HAProxyConfig
+	configList := make([]models.HAProxyConfig, len(configs))
+	for i, config := range configs {
+		configList[i] = *config
+	}
+
+	resp := &types.ListHAProxyConfigsResponse{}
+	resp.Body.Configs = configList
+	return resp, nil
+}
+
+// GetHAProxyConfig retrieves a specific HAProxy configuration by its ID
+func (h *ConfigHandler) GetHAProxyConfig(ctx context.Context, input *types.GetHAProxyConfigInput) (*types.GetHAProxyConfigResponse, error) {
+	config, err := h.store.GetHAProxyConfig(ctx, input.ConfigID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("HAProxy configuration not found")
+		}
+		return nil, huma.Error500InternalServerError("Failed to get configuration: " + err.Error())
+	}
+
+	resp := &types.GetHAProxyConfigResponse{}
+	resp.Body = *config
+	return resp, nil
+}
+
+// UpdateHAProxyConfig updates an existing HAProxy configuration
+func (h *ConfigHandler) UpdateHAProxyConfig(ctx context.Context, input *types.UpdateHAProxyConfigInput) (*types.UpdateHAProxyConfigResponse, error) {
+	config := input.Body
+	config.ID = input.ConfigID
+
+	// Validate that the configuration name is not empty
+	if err := validateConfigName(config.Name, "HAProxy Configuration"); err != nil {
+		return nil, err
+	}
+
+	if err := h.store.UpdateHAProxyConfig(ctx, &config); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("HAProxy configuration not found")
+		}
+		return nil, huma.Error500InternalServerError("Failed to update configuration: " + err.Error())
+	}
+
+	resp := &types.UpdateHAProxyConfigResponse{}
+	resp.Body = config
+	return resp, nil
+}
+
+// DeleteHAProxyConfig deletes an HAProxy configuration
+func (h *ConfigHandler) DeleteHAProxyConfig(ctx context.Context, input *types.DeleteHAProxyConfigInput) (*types.DeleteHAProxyConfigResponse, error) {
+	if err := h.store.DeleteHAProxyConfig(ctx, input.ConfigID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("HAProxy configuration not found")
+		}
+		return nil, huma.Error500InternalServerError("Failed to delete configuration: " + err.Error())
+	}
+
+	resp := &types.DeleteHAProxyConfigResponse{}
+	resp.Body.Message = "Configuration deleted successfully"
+	return resp, nil
+}
+
+// GenerateHAProxyConfig generates an HAProxy configuration
+func (h *ConfigHandler) GenerateHAProxyConfig(ctx context.Context, input *types.GenerateHAProxyConfigInput) (*types.GenerateHAProxyConfigResponse, error) {
+	config, err := h.store.GetHAProxyConfig(ctx, input.ConfigID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("HAProxy configuration not found")
+		}
+		return nil, huma.Error500InternalServerError("Failed to get configuration: " + err.Error())
+	}
+
+	// Generate the actual configuration (this would be implemented based on your business logic)
+	generatedConfig := map[string]interface{}{
+		"global":    config.Global,
+		"defaults":  config.Defaults,
+		"frontends": config.Frontends,
+		"backends":  config.Backends,
+		"listens":   config.Listens,
+		"stats":     config.Stats,
+	}
+
+	resp := &types.GenerateHAProxyConfigResponse{}
+	resp.Body = generatedConfig
+	return resp, nil
+}

@@ -104,6 +104,9 @@ func SetupRouterV2(
 	// Register V2 Service Instance Routes (user authentication required)
 	registerV2ServiceRoutes(api, serviceHandler, authMiddleware)
 
+	// Register V2 Configuration Routes (user authentication required)
+	registerV2ConfigRoutes(api, configHandler, authMiddleware)
+
 	// Register Agent Communication Routes (agent authentication required)
 	agentHandlers.RegisterAgentRoutes(api, authMiddleware)
 
@@ -326,5 +329,307 @@ func registerV2ServiceRoutes(api huma.API, serviceHandler *handlers.ServiceHandl
 			},
 			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
 		}, serviceHandler.GenerateServiceConfig,
+	)
+}
+
+func registerV2ConfigRoutes(api huma.API, configHandler *handlers.ConfigHandler, authMiddleware *auth.AuthMiddleware) {
+	// =============================================================================
+	// SingBox Configuration Routes
+	// =============================================================================
+
+	// Create SingBox Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "create-singbox-config-v2",
+			Method:      http.MethodPost,
+			Path:        "/api/v2/configs/singbox",
+			Summary:     "Create SingBox Configuration",
+			Description: "Creates a new SingBox proxy configuration",
+			Tags:        []string{"SingBox Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.CreateSingBoxConfig,
+	)
+
+	// List SingBox Configurations
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "list-singbox-configs-v2",
+			Method:      http.MethodGet,
+			Path:        "/api/v2/configs/singbox",
+			Summary:     "List SingBox Configurations",
+			Description: "Retrieves a paginated list of SingBox configurations",
+			Tags:        []string{"SingBox Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.ListSingBoxConfigs,
+	)
+
+	// Get SingBox Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "get-singbox-config-v2",
+			Method:      http.MethodGet,
+			Path:        "/api/v2/configs/singbox/{config_id}",
+			Summary:     "Get SingBox Configuration",
+			Description: "Retrieves a specific SingBox configuration by ID",
+			Tags:        []string{"SingBox Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.GetSingBoxConfig,
+	)
+
+	// Update SingBox Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "update-singbox-config-v2",
+			Method:      http.MethodPut,
+			Path:        "/api/v2/configs/singbox/{config_id}",
+			Summary:     "Update SingBox Configuration",
+			Description: "Updates an existing SingBox configuration",
+			Tags:        []string{"SingBox Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.UpdateSingBoxConfig,
+	)
+
+	// Delete SingBox Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "delete-singbox-config-v2",
+			Method:      http.MethodDelete,
+			Path:        "/api/v2/configs/singbox/{config_id}",
+			Summary:     "Delete SingBox Configuration",
+			Description: "Deletes a SingBox configuration",
+			Tags:        []string{"SingBox Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.DeleteSingBoxConfig,
+	)
+
+	// Generate SingBox Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "generate-singbox-config-v2",
+			Method:      http.MethodPost,
+			Path:        "/api/v2/configs/singbox/{config_id}/generate",
+			Summary:     "Generate SingBox Configuration",
+			Description: "Generates a SingBox configuration file from stored configuration",
+			Tags:        []string{"SingBox Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.GenerateSingBoxConfig,
+	)
+
+	// =============================================================================
+	// Xray Configuration Routes
+	// =============================================================================
+
+	// Create Xray Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "create-xray-config-v2",
+			Method:      http.MethodPost,
+			Path:        "/api/v2/configs/xray",
+			Summary:     "Create Xray Configuration",
+			Description: "Creates a new Xray proxy configuration",
+			Tags:        []string{"Xray Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.CreateXrayConfig,
+	)
+
+	// List Xray Configurations
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "list-xray-configs-v2",
+			Method:      http.MethodGet,
+			Path:        "/api/v2/configs/xray",
+			Summary:     "List Xray Configurations",
+			Description: "Retrieves a paginated list of Xray configurations",
+			Tags:        []string{"Xray Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.ListXrayConfigs,
+	)
+
+	// Get Xray Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "get-xray-config-v2",
+			Method:      http.MethodGet,
+			Path:        "/api/v2/configs/xray/{config_id}",
+			Summary:     "Get Xray Configuration",
+			Description: "Retrieves a specific Xray configuration by ID",
+			Tags:        []string{"Xray Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.GetXrayConfig,
+	)
+
+	// Update Xray Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "update-xray-config-v2",
+			Method:      http.MethodPut,
+			Path:        "/api/v2/configs/xray/{config_id}",
+			Summary:     "Update Xray Configuration",
+			Description: "Updates an existing Xray configuration",
+			Tags:        []string{"Xray Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.UpdateXrayConfig,
+	)
+
+	// Delete Xray Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "delete-xray-config-v2",
+			Method:      http.MethodDelete,
+			Path:        "/api/v2/configs/xray/{config_id}",
+			Summary:     "Delete Xray Configuration",
+			Description: "Deletes an Xray configuration",
+			Tags:        []string{"Xray Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.DeleteXrayConfig,
+	)
+
+	// Generate Xray Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "generate-xray-config-v2",
+			Method:      http.MethodPost,
+			Path:        "/api/v2/configs/xray/{config_id}/generate",
+			Summary:     "Generate Xray Configuration",
+			Description: "Generates an Xray configuration file from stored configuration",
+			Tags:        []string{"Xray Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.GenerateXrayConfig,
+	)
+
+	// =============================================================================
+	// HAProxy Configuration Routes
+	// =============================================================================
+
+	// Create HAProxy Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "create-haproxy-config-v2",
+			Method:      http.MethodPost,
+			Path:        "/api/v2/configs/haproxy",
+			Summary:     "Create HAProxy Configuration",
+			Description: "Creates a new HAProxy load balancer configuration",
+			Tags:        []string{"HAProxy Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.CreateHAProxyConfig,
+	)
+
+	// List HAProxy Configurations
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "list-haproxy-configs-v2",
+			Method:      http.MethodGet,
+			Path:        "/api/v2/configs/haproxy",
+			Summary:     "List HAProxy Configurations",
+			Description: "Retrieves a paginated list of HAProxy configurations",
+			Tags:        []string{"HAProxy Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.ListHAProxyConfigs,
+	)
+
+	// Get HAProxy Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "get-haproxy-config-v2",
+			Method:      http.MethodGet,
+			Path:        "/api/v2/configs/haproxy/{config_id}",
+			Summary:     "Get HAProxy Configuration",
+			Description: "Retrieves a specific HAProxy configuration by ID",
+			Tags:        []string{"HAProxy Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.GetHAProxyConfig,
+	)
+
+	// Update HAProxy Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "update-haproxy-config-v2",
+			Method:      http.MethodPut,
+			Path:        "/api/v2/configs/haproxy/{config_id}",
+			Summary:     "Update HAProxy Configuration",
+			Description: "Updates an existing HAProxy configuration",
+			Tags:        []string{"HAProxy Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.UpdateHAProxyConfig,
+	)
+
+	// Delete HAProxy Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "delete-haproxy-config-v2",
+			Method:      http.MethodDelete,
+			Path:        "/api/v2/configs/haproxy/{config_id}",
+			Summary:     "Delete HAProxy Configuration",
+			Description: "Deletes an HAProxy configuration",
+			Tags:        []string{"HAProxy Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.DeleteHAProxyConfig,
+	)
+
+	// Generate HAProxy Configuration
+	huma.Register(
+		api, huma.Operation{
+			OperationID: "generate-haproxy-config-v2",
+			Method:      http.MethodPost,
+			Path:        "/api/v2/configs/haproxy/{config_id}/generate",
+			Summary:     "Generate HAProxy Configuration",
+			Description: "Generates an HAProxy configuration file from stored configuration",
+			Tags:        []string{"HAProxy Configurations"},
+			Security: []map[string][]string{
+				{"BearerAuth": {}},
+			},
+			Middlewares: huma.Middlewares{authMiddleware.RequireUserAuth},
+		}, configHandler.GenerateHAProxyConfig,
 	)
 }

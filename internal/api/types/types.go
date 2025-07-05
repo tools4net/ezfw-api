@@ -156,6 +156,74 @@ type GenerateXrayConfigResponse struct {
 	Body interface{} `json:"config" doc:"Generated Xray configuration"`
 }
 
+// HAProxy Config Operations
+
+// CreateHAProxyConfigInput represents the input for creating an HAProxy config
+type CreateHAProxyConfigInput struct {
+	Body models.HAProxyConfig `json:"haproxyConfig"`
+}
+
+// CreateHAProxyConfigResponse represents the response for creating an HAProxy config
+type CreateHAProxyConfigResponse struct {
+	Body models.HAProxyConfig
+}
+
+// ListHAProxyConfigsInput represents the input for listing HAProxy configs
+type ListHAProxyConfigsInput struct {
+	Limit  int `query:"limit" minimum:"1" maximum:"100" default:"10" example:"10" doc:"Number of items to return per page"`
+	Offset int `query:"offset" minimum:"0" default:"0" example:"0" doc:"Offset for pagination"`
+}
+
+// ListHAProxyConfigsResponse represents the response for listing HAProxy configs
+type ListHAProxyConfigsResponse struct {
+	Body struct {
+		Configs []models.HAProxyConfig `json:"configs"`
+	}
+}
+
+// GetHAProxyConfigInput represents the input for getting an HAProxy config by ID
+type GetHAProxyConfigInput struct {
+	ConfigID string `path:"configId" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" doc:"HAProxy Configuration ID"`
+}
+
+// GetHAProxyConfigResponse represents the response for getting an HAProxy config
+type GetHAProxyConfigResponse struct {
+	Body models.HAProxyConfig
+}
+
+// UpdateHAProxyConfigInput represents the input for updating an HAProxy config
+type UpdateHAProxyConfigInput struct {
+	ConfigID string               `path:"configId" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" doc:"HAProxy Configuration ID"`
+	Body     models.HAProxyConfig `json:"haproxyConfig"`
+}
+
+// UpdateHAProxyConfigResponse represents the response for updating an HAProxy config
+type UpdateHAProxyConfigResponse struct {
+	Body models.HAProxyConfig
+}
+
+// DeleteHAProxyConfigInput represents the input for deleting an HAProxy config
+type DeleteHAProxyConfigInput struct {
+	ConfigID string `path:"configId" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" doc:"HAProxy Configuration ID"`
+}
+
+// DeleteHAProxyConfigResponse represents the response for deleting an HAProxy config
+type DeleteHAProxyConfigResponse struct {
+	Body struct {
+		Message string `json:"message" example:"Configuration deleted successfully"`
+	}
+}
+
+// GenerateHAProxyConfigInput represents the input for generating an HAProxy config
+type GenerateHAProxyConfigInput struct {
+	ConfigID string `path:"configId" example:"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" doc:"HAProxy Configuration ID"`
+}
+
+// GenerateHAProxyConfigResponse represents the response for generating an HAProxy config
+type GenerateHAProxyConfigResponse struct {
+	Body interface{} `json:"config" doc:"Generated HAProxy configuration"`
+}
+
 // =============================================================================
 // V2 API Types - Node Management
 // =============================================================================

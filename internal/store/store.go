@@ -23,6 +23,14 @@ type Store interface {
 	DeleteXrayConfig(ctx context.Context, id string) error
 	// CountXrayConfigs(ctx context.Context) (int, error) // Optional: for pagination metadata
 
+	// HAProxy Configuration methods
+	CreateHAProxyConfig(ctx context.Context, config *models.HAProxyConfig) error
+	GetHAProxyConfig(ctx context.Context, id string) (*models.HAProxyConfig, error)
+	ListHAProxyConfigs(ctx context.Context, limit, offset int) ([]*models.HAProxyConfig, error)
+	UpdateHAProxyConfig(ctx context.Context, config *models.HAProxyConfig) error
+	DeleteHAProxyConfig(ctx context.Context, id string) error
+	// CountHAProxyConfigs(ctx context.Context) (int, error) // Optional: for pagination metadata
+
 	// V2 Node management methods
 	CreateNode(ctx context.Context, node *models.NodeCreateV2) (*models.NodeV2, error)
 	GetNode(ctx context.Context, id string) (*models.NodeV2, error)
