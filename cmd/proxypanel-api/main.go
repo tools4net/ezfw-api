@@ -21,14 +21,10 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 
-	"github.com/gin-gonic/gin"
-	"github.com/tools4net/ezfw/backend/internal/api"
 	"github.com/tools4net/ezfw/backend/internal/store/sqlite"
 	// "github.com/tools4net/ezfw/backend/internal/config" // Placeholder for config
 )
@@ -61,30 +57,4 @@ func main() {
 	}
 	defer dbStore.Close() // Ensure DB is closed when main exits
 
-	// Initialize Gin router
-	router := gin.Default()
-
-	// Setup routes
-	api.SetupRouter(router, dbStore)
-
-	// Basic root health check (distinct from API health check)
-	router.GET(
-		"/", func(c *gin.Context) {
-			c.JSON(
-				http.StatusOK, gin.H{
-					"message": "ProxyPanel Backend is running!",
-				},
-			)
-		},
-	)
-
-	port := os.Getenv("BACKEND_PORT")
-	if port == "" {
-		port = "8080" // Default port
-	}
-
-	fmt.Printf("Backend server starting on port %s\n", port)
-	if err := router.Run(":" + port); err != nil {
-		log.Fatalf("Failed to run server: %v", err)
-	}
 }
